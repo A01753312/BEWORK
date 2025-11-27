@@ -3949,7 +3949,20 @@ def _norm_sin_asesor_label(x: str) -> str:
     return s
 
 # Aplicar normalización y asegurar unicidad
-ASES_ALL = sorted(list(dict.fromkeys([_norm_sin_asesor_label(x) for x in asesor_for_filter.unique().tolist()])))
+# Preferir cargar la lista de asesores desde Google Sheets si está habilitado
+ASES_ALL = None
+try:
+    if USE_GSHEETS:
+        # Intentar cargar desde la pestaña de asesores en Google Sheets
+        ases_from_sheet = load_catalog_from_gsheet(GSHEET_ASESORES_TAB, None)
+        if ases_from_sheet:
+            # Normalizar '(Sin asesor)' y asegurar unicidad
+            ASES_ALL = sorted(list(dict.fromkeys([_norm_sin_asesor_label(x) for x in ases_from_sheet if str(x).strip() or x == ""])))
+    # Si no hay datos desde Sheets o GS está deshabilitado, derivar desde la base local
+    if not ASES_ALL:
+        ASES_ALL = sorted(list(dict.fromkeys([_norm_sin_asesor_label(x) for x in asesor_for_filter.unique().tolist()])))
+except Exception:
+    ASES_ALL = sorted(list(dict.fromkeys([_norm_sin_asesor_label(x) for x in asesor_for_filter.unique().tolist()])))
 
 # IMPORTANTE: Aplicar la misma normalización a asesor_for_filter para que coincida con ASES_ALL
 asesor_for_filter_normalized = asesor_for_filter.apply(_norm_sin_asesor_label)
