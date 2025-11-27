@@ -216,21 +216,29 @@ def _gs_credentials():
     if _GS_CREDS is not None:
         return _GS_CREDS
     try:
-        if hasattr(st, "secrets") and isinstance(st.secrets, dict) and st.secrets:
-            s = dict(st.secrets)
-            if all(k in s for k in ("type","project_id","private_key_id","private_key")):
-                sa = s
-                sa["private_key"] = sa["private_key"].replace("\\n", "\n")
-                scopes = ["https://www.googleapis.com/auth/spreadsheets"]
-                _GS_CREDS = Credentials.from_service_account_info(sa, scopes=scopes)
-                return _GS_CREDS
-            if "service_account" in s and isinstance(s["service_account"], dict):
-                sa = dict(s["service_account"])
-                if "private_key" in sa:
-                    sa["private_key"] = sa["private_key"].replace("\\n", "\n")
-                scopes = ["https://www.googleapis.com/auth/spreadsheets"]
-                _GS_CREDS = Credentials.from_service_account_info(sa, scopes=scopes)
-                return _GS_CREDS
+        if hasattr(st, "secrets"):
+            try:
+                s = dict(st.secrets)
+            except Exception:
+                # Fallback: use as-is (streamlit may provide a secrets-like object)
+                s = st.secrets
+            if s:
+                # Top-level service account keys present (your example)
+                if all(k in s for k in ("type", "project_id", "private_key_id", "private_key")):
+                    sa = dict(s)
+                    if "private_key" in sa:
+                        sa["private_key"] = sa["private_key"].replace("\\n", "\n")
+                    scopes = ["https://www.googleapis.com/auth/spreadsheets"]
+                    _GS_CREDS = Credentials.from_service_account_info(sa, scopes=scopes)
+                    return _GS_CREDS
+                # Or nested under `service_account` key
+                if "service_account" in s and isinstance(s["service_account"], dict):
+                    sa = dict(s["service_account"])
+                    if "private_key" in sa:
+                        sa["private_key"] = sa["private_key"].replace("\\n", "\n")
+                    scopes = ["https://www.googleapis.com/auth/spreadsheets"]
+                    _GS_CREDS = Credentials.from_service_account_info(sa, scopes=scopes)
+                    return _GS_CREDS
     except Exception:
         pass
 
