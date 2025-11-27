@@ -32,18 +32,9 @@ import json
 if "drive_creds" not in st.session_state:
     st.session_state.drive_creds = None
 
-# Leer secretos de Streamlit de forma segura: si no existen, deshabilitar integración
-HAVE_GOOGLE_SECRETS = True
-try:
-    CLIENT_ID = st.secrets["GOOGLE_CLIENT_ID"]
-    CLIENT_SECRET = st.secrets["GOOGLE_CLIENT_SECRET"]
-    REDIRECT_URI = st.secrets["REDIRECT_URI"]
-    # Si alguno está vacío, marcar como no disponible
-    if not CLIENT_ID or not CLIENT_SECRET or not REDIRECT_URI:
-        HAVE_GOOGLE_SECRETS = False
-except Exception:
-    CLIENT_ID = CLIENT_SECRET = REDIRECT_URI = ""
-    HAVE_GOOGLE_SECRETS = False
+CLIENT_ID = st.secrets["GOOGLE_CLIENT_ID"]
+CLIENT_SECRET = st.secrets["GOOGLE_CLIENT_SECRET"]
+REDIRECT_URI = st.secrets["REDIRECT_URI"]
 
 # Scopes actualizados según la documentación oficial de Google
 SCOPES = [
@@ -52,46 +43,37 @@ SCOPES = [
 ]
 
 # Mostrar botón de conexión si aún no se ha autenticado
-if HAVE_GOOGLE_SECRETS:
-    if not st.session_state.drive_creds:
-        # Construir URL de autorización manualmente con scopes correctos
-        scope_string = "%20".join([scope.replace("https://www.googleapis.com/auth/", "") for scope in SCOPES])
-        auth_url = (
-            "https://accounts.google.com/o/oauth2/v2/auth"
-            f"?response_type=code&client_id={CLIENT_ID}"
-            f"&redirect_uri={REDIRECT_URI}"
-            f"&scope=https://www.googleapis.com/auth/drive.file%20https://www.googleapis.com/auth/drive.metadata.readonly"
-            f"&access_type=offline&prompt=consent"
-        )
-        st.sidebar.markdown("---")
-        st.sidebar.markdown("### 📂 Conexión a Google Drive")
-        st.sidebar.markdown(f"[🔐 Conectar con Google Drive]({auth_url})")
-
-    else:
-        st.sidebar.markdown("---")
-        st.sidebar.markdown("### 📂 Google Drive")
-        st.sidebar.success("✅ Conectado a Google Drive")
-        
-        # Botón para desconectar Google Drive
-        if st.sidebar.button("🔌 Desconectar Drive", help="Cerrar sesión de Google Drive"):
-            st.session_state.drive_creds = None
-            if "processed_auth_code" in st.session_state:
-                del st.session_state.processed_auth_code
-            st.query_params.clear()
-            st.sidebar.success("Google Drive desconectado")
-            st.rerun()
+if not st.session_state.drive_creds:
+    # Construir URL de autorización manualmente con scopes correctos
+    scope_string = "%20".join([scope.replace("https://www.googleapis.com/auth/", "") for scope in SCOPES])
+    auth_url = (
+        "https://accounts.google.com/o/oauth2/v2/auth"
+        f"?response_type=code&client_id={CLIENT_ID}"
+        f"&redirect_uri={REDIRECT_URI}"
+        f"&scope=https://www.googleapis.com/auth/drive.file%20https://www.googleapis.com/auth/drive.metadata.readonly"
+        f"&access_type=offline&prompt=consent"
+    )
+    st.sidebar.markdown("---")
+    st.sidebar.markdown("### 📂 Conexión a Google Drive")
+    st.sidebar.markdown(f"[🔐 Conectar con Google Drive]({auth_url})")
 
 else:
     st.sidebar.markdown("---")
-    st.sidebar.info(
-        "Google Drive deshabilitado: no se encontraron secretos. "
-        "Crea `.streamlit/secrets.toml` con `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` y `REDIRECT_URI` "
-        "si quieres habilitar la integración."
-    )
+    st.sidebar.markdown("### 📂 Google Drive")
+    st.sidebar.success("✅ Conectado a Google Drive")
+    
+    # Botón para desconectar Google Drive
+    if st.sidebar.button("🔌 Desconectar Drive", help="Cerrar sesión de Google Drive"):
+        st.session_state.drive_creds = None
+        if "processed_auth_code" in st.session_state:
+            del st.session_state.processed_auth_code
+        st.query_params.clear()
+        st.sidebar.success("Google Drive desconectado")
+        st.rerun()
 
 # Procesar el parámetro de autorización devuelto por Google
 query_params = st.query_params
-if HAVE_GOOGLE_SECRETS and "code" in query_params and not st.session_state.drive_creds:
+if "code" in query_params and not st.session_state.drive_creds:
     code = query_params["code"]
     
     # Solo procesar si no hemos procesado este código antes
@@ -1460,7 +1442,7 @@ def load_sucursales() -> list:
     Carga la lista de sucursales desde Google Sheets (prioritario) o JSON local (respaldo).
     """
     # Valores por defecto
-    defaults = ["Bework Edomex", "Bework LEON"]
+    defaults = ["TOXQUI", "COLOKTE", "KAPITALIZA"]
     
     # Intentar cargar desde Google Sheets primero
     if USE_GSHEETS:
@@ -2565,60 +2547,10 @@ def selectbox_multi(label: str, options: list[str], state_key: str) -> list[str]
 # ---------- Sidebar (filtros + acciones) ----------
 # Columnas esperadas en el CSV / DataFrame de clientes
 COLUMNS = [
-    # Identificador básico
-    "id",
-    # Datos de contacto
-    "nombre", "telefono", "correo",
-    # Tipo de trámite solicitado por el cliente (nuevo / renovación / compra)
-    "tramite",
-    # Fecha en que se ingresó el cliente al sistema
-    "fecha_ingreso",
-    # Fecha en la que la sede puede renovar o comprar (próxima acción)
-    "fecha_proximo",
-    # Flags / pistas comerciales
-    "cliente_potencial",  # SI/NO o vacío
-    "cliente_no",         # clientes que dijeron que no (motivo opcional)
-    "buzon",              # buzón o canal donde cayó el lead
-    # Asesores
-    "asesor_venta",       # asesor de venta asignado (nuevo nombre)
-    "asesor",             # mantener por compatibilidad
-    # Campos heredados y utilitarios (se mantienen para compatibilidad)
+    "id","nombre","sucursal","asesor","fecha_ingreso","fecha_dispersion",
     "estatus","monto_propuesta","monto_final","segundo_estatus","observaciones",
-    "score","analista","fuente","sucursal","fecha_dispersion"
+    "score","telefono","correo","analista","fuente"
 ]
-
-
-def normalize_clientes_df(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Asegura que el DataFrame de clientes tenga todas las columnas esperadas
-    (según `COLUMNS`) y define valores por defecto para los campos nuevos.
-    Esto mantiene compatibilidad con datos antiguos.
-    """
-    df = df.copy().fillna("")
-    for c in COLUMNS:
-        if c not in df.columns:
-            df[c] = ""
-
-    # Normalizaciones y valores por defecto específicos
-    # Tramite: forzar a minúsculas limpias si existe
-    if "tramite" in df.columns:
-        df["tramite"] = df["tramite"].astype(str).str.strip()
-
-    # cliente_potencial: estandarizar a 'SI'/'NO' vacío -> 'NO'
-    if "cliente_potencial" in df.columns:
-        df["cliente_potencial"] = df["cliente_potencial"].astype(str).str.strip().replace({"": "NO"})
-
-    # asesor_venta: si está vacío, intentar copiar desde 'asesor'
-    if "asesor_venta" in df.columns and "asesor" in df.columns:
-        mask = df["asesor_venta"].astype(str).str.strip() == ""
-        df.loc[mask, "asesor_venta"] = df.loc[mask, "asesor"].astype(str)
-
-    # fecha_proximo: mantener formato tal cual (se parseará cuando sea necesario)
-    # buzón: normalizar nombre corto
-    if "buzon" in df.columns:
-        df["buzon"] = df["buzon"].astype(str).str.strip()
-
-    return df[COLUMNS]
 
 def cargar_clientes(force_reload: bool = False) -> pd.DataFrame:
     """
@@ -2665,8 +2597,7 @@ def cargar_clientes(force_reload: bool = False) -> pd.DataFrame:
                     df[c] = ""
             
             result = df[COLUMNS].astype(str).fillna("")
-            result = normalize_clientes_df(result)
-
+            
             # Actualizar caché
             _CLIENTES_CACHE = result.copy()
             _CLIENTES_CACHE_TIME = now
@@ -2681,7 +2612,6 @@ def cargar_clientes(force_reload: bool = False) -> pd.DataFrame:
         if CLIENTES_XLSX.exists():
             df = pd.read_excel(CLIENTES_XLSX, dtype=str).fillna("")
             result = _ensure_cols(df)
-            result = normalize_clientes_df(result)
             _CLIENTES_CACHE = result.copy()
             _CLIENTES_CACHE_TIME = now
             return result
@@ -2692,7 +2622,6 @@ def cargar_clientes(force_reload: bool = False) -> pd.DataFrame:
         if CLIENTES_CSV.exists():
             df = pd.read_csv(CLIENTES_CSV, dtype=str).fillna("")
             result = _ensure_cols(df)
-            result = normalize_clientes_df(result)
             _CLIENTES_CACHE = result.copy()
             _CLIENTES_CACHE_TIME = now
             return result
@@ -4191,8 +4120,7 @@ except Exception:
 
 # ---------- Main UI con pestañas ----------  # NEW
 # Header profesional
-render_professional_header()
-
+st.title("👤 CRM - Gestión de Clientes")
 tab_dash, tab_cli, tab_docs, tab_import, tab_hist = st.tabs(
     ["📊 Dashboard", "📋 Clientes", "📎 Documentos", "📥 Importar", "🗂️ Historial"]
 )
