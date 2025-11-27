@@ -218,18 +218,16 @@ if not users_data.get("users"):
                 else:
                     st.error(msg)
 
-# Login form
+# Login inputs (single submit — avoids double-submit issues from st.form)
 if not current_user():
-    with st.sidebar.form("login_form", clear_on_submit=True):
-        st.markdown("### Iniciar sesión")
-        luser = st.text_input("Usuario", key="login_user")
-        lpw = st.text_input("Contraseña", type="password", key="login_pw")
-        submitted = st.form_submit_button("Entrar")
-
-    if submitted:
+    st.sidebar.markdown("### Iniciar sesión")
+    luser = st.sidebar.text_input("Usuario", key="login_user")
+    lpw = st.sidebar.text_input("Contraseña", type="password", key="login_pw")
+    if st.sidebar.button("Entrar", key="login_btn"):
         u = get_user(luser)
         if u and _verify_pw(lpw, u.get("salt",""), u.get("hash","")):
             st.session_state["auth_user"] = {"user": u.get("user"), "role": u.get("role", "member")}
+            # Limpieza de inputs de login
             for _k in ("login_pw", "login_user"):
                 st.session_state.pop(_k, None)
 
@@ -239,10 +237,13 @@ if not current_user():
             st.session_state["gsheets_connected"] = False
             st.session_state["gsheets_checked"] = False
 
-            st.toast(f"Bienvenido, {st.session_state['auth_user']['user']}", icon="✅")
+            try:
+                st.toast(f"Bienvenido, {st.session_state['auth_user']['user']}", icon="✅")
+            except Exception:
+                pass
             do_rerun()
         else:
-            st.error("Credenciales inválidas.")
+            st.sidebar.error("Credenciales inválidas.")
 
 if current_user():
     u = current_user()
