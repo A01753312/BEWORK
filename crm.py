@@ -4074,6 +4074,18 @@ if use_gs_ases:
 else:
     f_ases_source = ASES_ALL
 
+# Si no se solicitó explícitamente, intentar auto-detección: si existe conexión y filas en la
+# pestaña `asesores`, usarla automáticamente (no requiere cambiar USE_GSHEETS global).
+try:
+    if not use_gs_ases:
+        auto_ases = load_asesores_from_gsheet(force_reload=True)
+        if isinstance(auto_ases, list) and len(auto_ases) > 0:
+            f_ases_source = sorted(list(dict.fromkeys(auto_ases)))
+            st.sidebar.info(f"Usando lista de asesores desde Google Sheets ({len(f_ases_source)} registros)")
+            st.session_state.setdefault("asesores_from_sheet", f_ases_source)
+except Exception:
+    pass
+
 f_ases = selectbox_multi("Asesores",   f_ases_source, "f_ases")
 f_est  = selectbox_multi("Estatus",    EST_ALL,  "f_est")
 # NEW: añadir filtro de Fuente en el sidebar
