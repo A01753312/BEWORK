@@ -3964,6 +3964,21 @@ try:
 except Exception:
     ASES_ALL = sorted(list(dict.fromkeys([_norm_sin_asesor_label(x) for x in asesor_for_filter.unique().tolist()])))
 
+def load_asesores_from_gsheet(force_reload: bool = False) -> list:
+    """
+    Intentar cargar la lista de asesores desde la pestaña `GSHEET_ASESORES_TAB`.
+    Retorna lista (posiblemente vacía) o None si no pudo conectarse.
+    """
+    try:
+        # Usar el loader general que ya encapsula caché y fallback
+        ases = load_catalog_from_gsheet(GSHEET_ASESORES_TAB, None, force_reload=force_reload)
+        if ases:
+            # Normalizar etiquetas
+            return [ _norm_sin_asesor_label(x) for x in ases ]
+        return []
+    except Exception:
+        return None
+
 # IMPORTANTE: Aplicar la misma normalización a asesor_for_filter para que coincida con ASES_ALL
 asesor_for_filter_normalized = asesor_for_filter.apply(_norm_sin_asesor_label)
 
@@ -3975,7 +3990,35 @@ FUENTE_ALL = sorted(list(dict.fromkeys([ (str(x).strip() if str(x).strip() else 
 
 # Controles “tipo selectbox” pero multi
 f_suc  = selectbox_multi("Sucursales", SUC_ALL,  "f_suc")
-f_ases = selectbox_multi("Asesores",   ASES_ALL, "f_ases")
+
+# --- Opción manual: cargar asesores desde Google Sheets si el usuario lo solicita ---
+use_gs_ases = False
+try:
+    # Mostrar toggle solo si hay posibilidad de usar Google Sheets
+    use_gs_ases = st.sidebar.checkbox("Cargar Asesores desde Google Sheets (si disponible)", value=False, key="use_gs_ases_toggle")
+except Exception:
+    use_gs_ases = False
+
+if use_gs_ases:
+    # Intentar cargar desde Sheets (ignora USE_GSHEETS global para esta acción explícita)
+    ases_loaded = load_asesores_from_gsheet(force_reload=True)
+    if ases_loaded is None:
+        st.sidebar.warning("No se pudieron cargar los asesores desde Google Sheets. Revisa credenciales.")
+        # fallback: mantener lista derivada de la base local
+        f_ases_source = ASES_ALL
+    elif len(ases_loaded) == 0:
+        st.sidebar.info("La pestaña 'asesores' en Google Sheets está vacía. Usando lista local.")
+        f_ases_source = ASES_ALL
+    else:
+        # Actualizar la lista de asesores mostrada
+        f_ases_source = sorted(list(dict.fromkeys(ases_loaded)))
+        # Guardar en session para que persistA en la UI entre reruns
+        st.session_state.setdefault("asesores_from_sheet", f_ases_source)
+        st.sidebar.success(f"Cargados {len(f_ases_source)} asesores desde Sheets")
+else:
+    f_ases_source = ASES_ALL
+
+f_ases = selectbox_multi("Asesores",   f_ases_source, "f_ases")
 f_est  = selectbox_multi("Estatus",    EST_ALL,  "f_est")
 # NEW: añadir filtro de Fuente en el sidebar
 f_fuente = selectbox_multi("Fuente", FUENTE_ALL, "f_fuente")
