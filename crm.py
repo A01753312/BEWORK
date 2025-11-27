@@ -214,6 +214,11 @@ if not users_data.get("users"):
                     st.session_state["gsheets_connected"] = False
                     st.session_state["gsheets_checked"] = False
                     st.success("Administrador creado y autenticado. Redirigiendo al CRM...")
+                    try:
+                        if hasattr(st, "experimental_rerun"):
+                            st.experimental_rerun()
+                    except Exception:
+                        pass
                 else:
                     st.error(msg)
 
@@ -238,6 +243,11 @@ if not current_user():
 
             try:
                 st.toast(f"Bienvenido, {st.session_state['auth_user']['user']}", icon="✅")
+            except Exception:
+                pass
+            try:
+                if hasattr(st, "experimental_rerun"):
+                    st.experimental_rerun()
             except Exception:
                 pass
         else:
