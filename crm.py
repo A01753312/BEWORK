@@ -208,7 +208,12 @@ if not users_data.get("users"):
             else:
                 ok, msg = add_user(_user, _pw1, role="admin")
                 if ok:
-                    st.success("Administrador creado. Inicia sesión.")
+                    # Auto-login after creating the initial admin to avoid double-login
+                    st.session_state["auth_user"] = {"user": _user, "role": "admin"}
+                    st.session_state["in_crm"] = True
+                    st.session_state["gsheets_connected"] = False
+                    st.session_state["gsheets_checked"] = False
+                    st.success("Administrador creado y autenticado. Redirigiendo al CRM...")
                     do_rerun()
                 else:
                     st.error(msg)
