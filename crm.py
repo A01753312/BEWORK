@@ -282,6 +282,7 @@ def test_gsheets_connection(show_toast: bool = True) -> bool:
 
         try:
             sh = gc.open_by_key(GSHEET_ID)
+            st.session_state['gsheet_title'] = getattr(sh, 'title', None)
             st.sidebar.success(f"✅ Conectado a Google Sheets: {sh.title}")
             if show_toast:
                 try: st.toast("Conexión a Google Sheets OK", icon="✅")
@@ -363,7 +364,11 @@ if current_user():
     u = current_user()
     st.sidebar.markdown(f"**Usuario:** {u.get('user')} — _{u.get('role')}_")
     if st.sidebar.button("Cerrar sesión"):
+        # Limpiar estados relacionados a sesión y GSheets
         st.session_state["auth_user"] = None
+        st.session_state["gsheets_connected"] = False
+        st.session_state["gsheet_title"] = None
+        st.session_state["in_crm"] = False
         do_rerun()
 
 st.sidebar.caption("Para OAuth2: configura `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` y `REDIRECT_URI` en `st.secrets` (o carga el JSON del cliente en `st.secrets['web']`).\nPara service account: coloca `service_account.json` o configura `st.secrets['service_account']`.")
@@ -371,6 +376,21 @@ st.sidebar.caption("Para OAuth2: configura `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SE
 # --- Main placeholder ---
 st.title("CRM — Auth & Google Drive/Sheets Test")
 if current_user():
-    st.write(f"Hola {current_user().get('user')}, estás autenticado.")
+    if st.session_state.get('in_crm'):
+        # Usuario autenticado y redirigido al CRM principal
+        st.header("CRM — Panel Principal")
+        st.write(f"Bienvenido, {current_user().get('user')}! Estás dentro del CRM.")
+        gs_ok = st.session_state.get('gsheets_connected', False)
+        gsheet_title = st.session_state.get('gsheet_title')
+        if gs_ok:
+            st.success(f"Google Sheets conectado: {gsheet_title or GSHEET_ID}")
+        else:
+            st.warning("Google Sheets no está conectado. Algunas funciones pueden no estar disponibles.")
+        # Aquí iría el contenido real del CRM (listas, búsquedas, etc.)
+        st.markdown("---")
+        st.write("(Contenido del CRM pendiente de implementar)")
+    else:
+        st.write(f"Hola {current_user().get('user')}, estás autenticado.")
+        st.info("Se verificará la conexión a Google Sheets automáticamente al iniciar sesión.")
 else:
     st.info("Inicia sesión en el sidebar para continuar.")
