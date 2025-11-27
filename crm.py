@@ -21,7 +21,7 @@ USERS_FILE = DATA_DIR / "users.json"
 
 # --- Variables Google Sheets ---
 USE_GSHEETS = True
-GSHEET_ID = "10_xueUKm0O1QwOK1YtZI-dFZlNdKVv82M2z29PfM9qk"
+GSHEET_ID = "1wD9D3OsSB4HXel1LIGo0h6xNdcjZEF-iHue-Hl4z1pg"
 
 # --- Helpers de hashing (PBKDF2) ---
 def _hash_pw_pbkdf2(password: str, salt_hex: str | None = None) -> tuple[str, str]:
