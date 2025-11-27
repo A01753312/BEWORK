@@ -32,9 +32,14 @@ import json
 if "drive_creds" not in st.session_state:
     st.session_state.drive_creds = None
 
-CLIENT_ID = st.secrets["GOOGLE_CLIENT_ID"]
-CLIENT_SECRET = st.secrets["GOOGLE_CLIENT_SECRET"]
-REDIRECT_URI = st.secrets["REDIRECT_URI"]
+try:
+    CLIENT_ID = st.secrets.get("GOOGLE_CLIENT_ID")
+    CLIENT_SECRET = st.secrets.get("GOOGLE_CLIENT_SECRET")
+    REDIRECT_URI = st.secrets.get("REDIRECT_URI")
+except Exception:
+    CLIENT_ID = None
+    CLIENT_SECRET = None
+    REDIRECT_URI = None
 
 # Scopes actualizados según la documentación oficial de Google
 SCOPES = [
@@ -1248,7 +1253,7 @@ CLIENTES_CSV = DATA_DIR / "clientes.csv"
 CLIENTES_XLSX = DATA_DIR / "clientes.xlsx"
 
 # === CONFIGURACIÓN GOOGLE SHEETS ===
-USE_GSHEETS = True   # pon False si quieres trabajar sólo local
+USE_GSHEETS = False   # por defecto False en entorno de tests/local; pon True para producción
 GSHEET_ID      = "1wD9D3OsSB4HXel1LIGo0h6xNdcjZEF-iHue-Hl4z1pg"
 GSHEET_TAB     = "clientes"    # tu pestaña principal
 GSHEET_HISTTAB = "historial"   # tu pestaña de historial
@@ -2822,19 +2827,70 @@ def _fix_missing_or_duplicate_ids(df: pd.DataFrame) -> pd.DataFrame:
     """Corrige IDs vacíos o duplicados en el DataFrame"""
     if df is None or df.empty:
         return df
-    
-    df_fixed = df.copy()
-    
-    # Generar IDs únicos para registros sin ID o con ID vacío
-    for idx, row in df_fixed.iterrows():
-        if pd.isna(row.get('id')) or str(row.get('id')).strip() == '':
-            # Generar nuevo ID único
-            existing_ids = set(df_fixed['id'].dropna().astype(str))
-            counter = 1000
-            while f"C-{counter}" in existing_ids:
-                counter += 1
-            df_fixed.at[idx, 'id'] = f"C-{counter}"
-    
+
+    df_fixed = df.copy().reset_index(drop=True)
+
+    # Normalize existing ids to strings
+    df_fixed['id'] = df_fixed.get('id', '').fillna('').astype(str)
+
+    # Collect numeric parts from existing IDs like C1000 or C-1000
+    used_nums = set()
+    for v in df_fixed['id']:
+        s = str(v).strip()
+        if s.upper().startswith('C'):
+            digits = re.sub(r'[^0-9]', '', s)
+            try:
+                if digits:
+                    used_nums.add(int(digits))
+            except Exception:
+                pass
+
+    next_num = max(used_nums) + 1 if used_nums else 1000
+
+    seen_ids = set()
+    for idx in df_fixed.index:
+        cur = str(df_fixed.at[idx, 'id']).strip()
+        if not cur:
+            # assign next available C<number>
+            while next_num in used_nums:
+                next_num += 1
+            new_id = f"C{next_num}"
+            df_fixed.at[idx, 'id'] = new_id
+            used_nums.add(next_num)
+            seen_ids.add(new_id)
+            next_num += 1
+        else:
+            # normalize format to start with C and digits if possible
+            if cur.upper().startswith('C'):
+                # ensure no duplicates
+                if cur in seen_ids:
+                    # duplicate -> assign new
+                    while next_num in used_nums:
+                        next_num += 1
+                    new_id = f"C{next_num}"
+                    df_fixed.at[idx, 'id'] = new_id
+                    used_nums.add(next_num)
+                    seen_ids.add(new_id)
+                    next_num += 1
+                else:
+                    seen_ids.add(cur)
+                    # try to record numeric part
+                    try:
+                        digits = re.sub(r'[^0-9]', '', cur)
+                        if digits:
+                            used_nums.add(int(digits))
+                    except Exception:
+                        pass
+            else:
+                # non-standard id -> convert to C<number>
+                while next_num in used_nums:
+                    next_num += 1
+                new_id = f"C{next_num}"
+                df_fixed.at[idx, 'id'] = new_id
+                used_nums.add(next_num)
+                seen_ids.add(new_id)
+                next_num += 1
+
     return df_fixed
 
 # Funciones de historial
@@ -3076,6 +3132,14 @@ def append_historial(cid: str, nombre: str, estatus_old: str, estatus_new: str, 
         else:
             dfh = pd.DataFrame([registro])
         dfh.to_csv(HISTORIAL_CSV, index=False, encoding="utf-8")
+        # Actualizar caché local del historial para reflejar el cambio inmediato
+        try:
+            global _HISTORIAL_CACHE, _HISTORIAL_CACHE_TIME
+            _HISTORIAL_CACHE = dfh.copy()
+            import time
+            _HISTORIAL_CACHE_TIME = time.time()
+        except Exception:
+            pass
         # También intentar escribir en Google Sheets (modo append) si está habilitado
         if USE_GSHEETS:
             try:
