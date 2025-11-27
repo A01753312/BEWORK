@@ -338,6 +338,22 @@ if not current_user():
             st.session_state["auth_user"] = {"user": u.get("user"), "role": u.get("role", "member")}
             for _k in ("login_pw", "login_user"):
                 st.session_state.pop(_k, None)
+
+            # Prueba automática de Google Sheets al iniciar sesión
+            try:
+                ok = test_gsheets_connection()
+                st.session_state["gsheets_connected"] = bool(ok)
+                if ok:
+                    try:
+                        st.toast("Conexión a Google Sheets verificada", icon="✅")
+                    except Exception:
+                        pass
+                else:
+                    st.sidebar.warning("No se pudo conectar a Google Sheets. Revisa credenciales y permisos.")
+            except Exception as e:
+                st.session_state["gsheets_connected"] = False
+                st.sidebar.error(f"Error verificando Google Sheets: {e}")
+
             st.toast(f"Bienvenido, {st.session_state['auth_user']['user']}", icon="✅")
             do_rerun()
         else:
@@ -349,17 +365,6 @@ if current_user():
     if st.sidebar.button("Cerrar sesión"):
         st.session_state["auth_user"] = None
         do_rerun()
-
-# --- Botón para probar Google Sheets ---
-st.sidebar.markdown("---")
-st.sidebar.markdown("### 📂 Probar Google Sheets")
-if st.sidebar.button("Probar conexión Google Sheets", key="btn_test_gs"):
-    with st.spinner("Probando conexión a Google Sheets..."):
-        ok = test_gsheets_connection()
-    if ok:
-        st.success("Conexión verificada ✅")
-    else:
-        st.error("Fallo en la prueba de conexión. Revisa credenciales y permisos.")
 
 st.sidebar.caption("Para OAuth2: configura `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` y `REDIRECT_URI` en `st.secrets` (o carga el JSON del cliente en `st.secrets['web']`).\nPara service account: coloca `service_account.json` o configura `st.secrets['service_account']`.")
 
