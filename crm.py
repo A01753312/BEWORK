@@ -3979,6 +3979,46 @@ def load_asesores_from_gsheet(force_reload: bool = False) -> list:
     except Exception:
         return None
 
+def test_gsheets_connection(tab_name: str = GSHEET_ASESORES_TAB) -> dict:
+    """
+    Prueba la conexión a Google Sheets y la disponibilidad de la pestaña `tab_name`.
+    Retorna un dict con llaves: 'creds_ok', 'ws_opened', 'rows', 'sample', 'error'
+    """
+    result = {
+        'creds_ok': False,
+        'ws_opened': False,
+        'rows': 0,
+        'sample': [],
+        'error': None
+    }
+    try:
+        creds = _gs_credentials()
+        result['creds_ok'] = creds is not None
+    except Exception as e:
+        result['error'] = f"Error cargando credenciales: {e}"
+        return result
+
+    try:
+        ws = _gs_open_worksheet(tab_name, force_reload=True)
+        if ws is None:
+            result['ws_opened'] = False
+            if not result['error']:
+                result['error'] = 'No se pudo abrir la worksheet (revisa permisos/ID).'
+            return result
+        result['ws_opened'] = True
+
+        try:
+            records = ws.get_all_records()
+            result['rows'] = len(records)
+            # devolver solo primeras 3 filas como muestra (no exponer datos sensibles en logs)
+            result['sample'] = records[:3]
+        except Exception as e:
+            result['error'] = f"Error leyendo registros de la worksheet: {e}"
+    except Exception as e:
+        result['error'] = f"Error abriendo worksheet: {e}"
+
+    return result
+
 # IMPORTANTE: Aplicar la misma normalización a asesor_for_filter para que coincida con ASES_ALL
 asesor_for_filter_normalized = asesor_for_filter.apply(_norm_sin_asesor_label)
 
@@ -4015,6 +4055,22 @@ if use_gs_ases:
         # Guardar en session para que persistA en la UI entre reruns
         st.session_state.setdefault("asesores_from_sheet", f_ases_source)
         st.sidebar.success(f"Cargados {len(f_ases_source)} asesores desde Sheets")
+    # Botón de diagnóstico: probar conexión a Sheets y mostrar el resultado
+    if st.sidebar.button("Probar conexión a Google Sheets (asesores)", key="btn_test_gs_ases"):
+        res = test_gsheets_connection(GSHEET_ASESORES_TAB)
+        if not res.get('creds_ok'):
+            st.sidebar.error("No se encontraron credenciales de Google Sheets.")
+        elif not res.get('ws_opened'):
+            st.sidebar.error(res.get('error') or "No se pudo abrir la pestaña en Google Sheets.")
+        else:
+            st.sidebar.success(f"Conexión OK. Filas encontradas: {res.get('rows',0)}")
+            # Mostrar una muestra de filas (máx 3)
+            sample = res.get('sample', [])
+            if sample:
+                st.sidebar.caption("Muestra de filas (hasta 3):")
+                for r in sample:
+                    # Mostrar solo claves para evitar datos sensibles largos
+                    st.sidebar.write({k: (str(v)[:80] + '...' if isinstance(v,str) and len(str(v))>80 else v) for k,v in r.items()})
 else:
     f_ases_source = ASES_ALL
 
