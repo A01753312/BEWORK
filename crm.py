@@ -3,8 +3,15 @@ import json
 import secrets
 import hashlib
 from pathlib import Path
+import streamlit as st
+import json
+import secrets
+import hashlib
+from pathlib import Path
 import gspread
 from google.oauth2.service_account import Credentials
+from google_auth_oauthlib.flow import Flow
+from googleapiclient.discovery import build
 import os
 
 # --- Configuración de página ---
@@ -19,7 +26,7 @@ DATA_DIR = Path("data")
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 USERS_FILE = DATA_DIR / "users.json"
 
-# --- Variables Google Sheets ---
+# === CONFIG GOOGLE SHEETS / DRIVE ===
 USE_GSHEETS = True
 GSHEET_ID = "1wD9D3OsSB4HXel1LIGo0h6xNdcjZEF-iHue-Hl4z1pg"
 
@@ -37,7 +44,6 @@ def _verify_pw(password: str, salt_hex: str, hash_hex: str) -> bool:
 
 # --- Usuarios (local simple + fallback) ---
 def load_users() -> dict:
-    """Carga usuarios desde `data/users.json` (estructura: {"users": [ {user, role, salt, hash} ]})"""
     try:
         if USERS_FILE.exists():
             return json.loads(USERS_FILE.read_text(encoding="utf-8"))
@@ -58,7 +64,6 @@ def add_user(username: str, password: str, role: str = "member") -> tuple[bool, 
     if role not in ("admin", "member"):
         return False, "Rol inválido."
     data = load_users()
-    # previene duplicado
     if any((u.get("user","") ).lower() == uname.lower() for u in data.get("users", [])):
         return False, "Ese usuario ya existe."
     salt_hex, hash_hex = _hash_pw_pbkdf2(password)
@@ -88,25 +93,130 @@ def do_rerun():
             return
     except Exception:
         pass
-    # Fallback: toggle a key and stop
     st.session_state["_need_rerun"] = not st.session_state.get("_need_rerun", False)
     try:
         st.stop()
     except Exception:
         return
 
-# --- Google Sheets credentials loader ---
+# === OAuth2 Drive (same flow as your original script) ===
+if "drive_creds" not in st.session_state:
+    st.session_state.drive_creds = None
+
+# Read client config from st.secrets if available (keeps your original flow)
+CLIENT_ID = st.secrets.get("GOOGLE_CLIENT_ID") if hasattr(st, "secrets") else None
+CLIENT_SECRET = st.secrets.get("GOOGLE_CLIENT_SECRET") if hasattr(st, "secrets") else None
+REDIRECT_URI = st.secrets.get("REDIRECT_URI") if hasattr(st, "secrets") else None
+
+# Scopes
+SCOPES = [
+    "https://www.googleapis.com/auth/drive.file",
+    "https://www.googleapis.com/auth/drive.metadata.readonly",
+    "https://www.googleapis.com/auth/spreadsheets"
+]
+
+# Sidebar: Drive connect/disconnect using OAuth2 web flow
+st.sidebar.markdown("---")
+st.sidebar.markdown("### 📂 Conexión a Google Drive")
+
+def _build_auth_url():
+    cid = CLIENT_ID
+    cres = CLIENT_SECRET
+    ruri = REDIRECT_URI
+    if not (cid and cres and ruri) and hasattr(st, "secrets"):
+        s = dict(st.secrets)
+        if "web" in s and isinstance(s["web"], dict):
+            cid = cid or s["web"].get("client_id")
+            cres = cres or s["web"].get("client_secret")
+            ruri = ruri or (s["web"].get("redirect_uris") or [None])[0]
+
+    if not (cid and ruri):
+        return None
+
+    scope_str = "%20".join([s.replace("https://www.googleapis.com/auth/", "https://www.googleapis.com/auth/") for s in SCOPES])
+    auth_url = (
+        "https://accounts.google.com/o/oauth2/v2/auth"
+        f"?response_type=code&client_id={cid}"
+        f"&redirect_uri={ruri}"
+        f"&scope={scope_str}"
+        f"&access_type=offline&prompt=consent"
+    )
+    return auth_url
+
+auth_url = _build_auth_url()
+if not st.session_state.get("drive_creds"):
+    if auth_url:
+        st.sidebar.markdown(f"[🔐 Conectar con Google Drive]({auth_url})")
+    else:
+        st.sidebar.info("Configura `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` y `REDIRECT_URI` en `st.secrets` para usar OAuth2.")
+else:
+    st.sidebar.success("✅ Conectado a Google Drive")
+    if st.sidebar.button("🔌 Desconectar Drive", help="Cerrar sesión de Google Drive"):
+        st.session_state.drive_creds = None
+        if "processed_auth_code" in st.session_state:
+            del st.session_state.processed_auth_code
+        st.experimental_set_query_params()
+        st.sidebar.success("Google Drive desconectado")
+        st.experimental_rerun()
+
+# Procesar el parámetro de autorización devuelto por Google
+query_params = st.experimental_get_query_params()
+if "code" in query_params and not st.session_state.get("drive_creds"):
+    code = query_params.get("code")
+    if isinstance(code, list):
+        code = code[0]
+
+    if "processed_auth_code" not in st.session_state or st.session_state.processed_auth_code != code:
+        try:
+            client_config = None
+            if hasattr(st, "secrets"):
+                s = dict(st.secrets)
+                if all(k in s for k in ("GOOGLE_CLIENT_ID","GOOGLE_CLIENT_SECRET","REDIRECT_URI")):
+                    client_config = {
+                        "web": {
+                            "client_id": s["GOOGLE_CLIENT_ID"],
+                            "client_secret": s["GOOGLE_CLIENT_SECRET"],
+                            "redirect_uris": [s.get("REDIRECT_URI")],
+                            "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+                            "token_uri": "https://oauth2.googleapis.com/token",
+                        }
+                    }
+                elif "web" in s and isinstance(s["web"], dict):
+                    client_config = {"web": s["web"]}
+
+            if not client_config:
+                client_config = {
+                    "web": {
+                        "client_id": CLIENT_ID,
+                        "client_secret": CLIENT_SECRET,
+                        "redirect_uris": [REDIRECT_URI],
+                        "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+                        "token_uri": "https://oauth2.googleapis.com/token",
+                    }
+                }
+
+            flow = Flow.from_client_config(client_config, scopes=SCOPES)
+            flow.redirect_uri = client_config["web"].get("redirect_uris", [None])[0]
+            flow.fetch_token(code=code)
+            st.session_state.drive_creds = flow.credentials
+            st.session_state.processed_auth_code = code
+            st.experimental_set_query_params()
+            st.success("✅ Autenticación exitosa con Google Drive")
+            st.experimental_rerun()
+        except Exception as e:
+            st.experimental_set_query_params()
+            st.session_state.processed_auth_code = None
+            st.sidebar.error(f"Error en la autenticación: {e}")
+
+# --- Google Sheets credential helper (service account fallback) ---
 _GS_CREDS = None
 
 def _gs_credentials():
-    """Carga credenciales desde `st.secrets` (si está) o desde `service_account.json` en workspace."""
     global _GS_CREDS
     if _GS_CREDS is not None:
         return _GS_CREDS
-    # 1) Streamlit secrets
     try:
         if hasattr(st, "secrets") and isinstance(st.secrets, dict) and st.secrets:
-            # buscar claves típicas del service account
             s = dict(st.secrets)
             if all(k in s for k in ("type","project_id","private_key_id","private_key")):
                 sa = s
@@ -124,7 +234,6 @@ def _gs_credentials():
     except Exception:
         pass
 
-    # 2) service_account.json local
     try:
         p = Path("service_account.json")
         if p.exists():
@@ -139,35 +248,18 @@ def _gs_credentials():
 
     return None
 
-def _gs_open_worksheet(tab_name: str):
-    """Intenta abrir la hoja `GSHEET_ID` y retornar el worksheet `tab_name` (o None)."""
-    try:
-        creds = _gs_credentials()
-        if creds is None:
-            return None
-        gc = gspread.authorize(creds)
-        sh = gc.open_by_key(GSHEET_ID)
-        try:
-            ws = sh.worksheet(tab_name)
-        except Exception:
-            # si no existe, crear
-            ws = sh.add_worksheet(title=tab_name, rows=100, cols=20)
-        return ws
-    except Exception:
-        return None
-
-# --- Test helper for GSheets connection ---
 def test_gsheets_connection(show_toast: bool = True) -> bool:
-    """
-    Intenta autorizar con `_gs_credentials()` y abrir `GSHEET_ID`.
-    Devuelve True si OK y muestra mensajes en sidebar/toast.
-    """
     try:
-        creds = _gs_credentials()
+        creds = None
+        if st.session_state.get("drive_creds"):
+            creds = st.session_state.get("drive_creds")
+        else:
+            creds = _gs_credentials()
+
         if creds is None:
-            st.sidebar.error("❌ No se encontraron credenciales de Google Sheets.")
+            st.sidebar.error("❌ No se encontraron credenciales (OAuth o service account).")
             if show_toast:
-                try: st.toast("No se encontraron credenciales de Google Sheets.", icon="❌")
+                try: st.toast("No se encontraron credenciales para Google.", icon="❌")
                 except: pass
             return False
 
@@ -176,7 +268,7 @@ def test_gsheets_connection(show_toast: bool = True) -> bool:
         except Exception as e:
             st.sidebar.error(f"❌ Error autorizando credenciales: {e}")
             if show_toast:
-                try: st.toast("Error autorizando credenciales Google Sheets.", icon="❌")
+                try: st.toast("Error autorizando credenciales Google.", icon="❌")
                 except: pass
             return False
 
@@ -200,7 +292,7 @@ def test_gsheets_connection(show_toast: bool = True) -> bool:
             except: pass
         return False
 
-# --- UI: Sidebar login + prueba GSheets ---
+# --- UI: Sidebar login + Drive connect + prueba GSheets ---
 st.sidebar.title("👤 CRM — Inicio de sesión")
 
 # Si no hay usuarios, mostrar formulario para crear admin inicial
@@ -236,7 +328,6 @@ if not current_user():
         u = get_user(luser)
         if u and _verify_pw(lpw, u.get("salt",""), u.get("hash","")):
             st.session_state["auth_user"] = {"user": u.get("user"), "role": u.get("role", "member")}
-            # limpiar credenciales temporales
             for _k in ("login_pw", "login_user"):
                 st.session_state.pop(_k, None)
             st.toast(f"Bienvenido, {st.session_state['auth_user']['user']}", icon="✅")
@@ -253,7 +344,7 @@ if current_user():
 
 # --- Botón para probar Google Sheets ---
 st.sidebar.markdown("---")
-st.sidebar.markdown("### 📂 Conexión Google Sheets")
+st.sidebar.markdown("### 📂 Probar Google Sheets")
 if st.sidebar.button("Probar conexión Google Sheets", key="btn_test_gs"):
     with st.spinner("Probando conexión a Google Sheets..."):
         ok = test_gsheets_connection()
@@ -262,11 +353,10 @@ if st.sidebar.button("Probar conexión Google Sheets", key="btn_test_gs"):
     else:
         st.error("Fallo en la prueba de conexión. Revisa credenciales y permisos.")
 
-# Información útil para el desarrollador
-st.sidebar.caption("Coloca `service_account.json` en la raíz o configura `st.secrets` con las credenciales del service account.")
+st.sidebar.caption("Para OAuth2: configura `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` y `REDIRECT_URI` en `st.secrets` (o carga el JSON del cliente en `st.secrets['web']`).\nPara service account: coloca `service_account.json` o configura `st.secrets['service_account']`.")
 
 # --- Main placeholder ---
-st.title("CRM — Auth & GSheets test")
+st.title("CRM — Auth & Google Drive/Sheets Test")
 if current_user():
     st.write(f"Hola {current_user().get('user')}, estás autenticado.")
 else:
