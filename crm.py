@@ -214,7 +214,6 @@ if not users_data.get("users"):
                     st.session_state["gsheets_connected"] = False
                     st.session_state["gsheets_checked"] = False
                     st.success("Administrador creado y autenticado. Redirigiendo al CRM...")
-                    do_rerun()
                 else:
                     st.error(msg)
 
@@ -241,7 +240,6 @@ if not current_user():
                 st.toast(f"Bienvenido, {st.session_state['auth_user']['user']}", icon="✅")
             except Exception:
                 pass
-            do_rerun()
         else:
             st.sidebar.error("Credenciales inválidas.")
 
