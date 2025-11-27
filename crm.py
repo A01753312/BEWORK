@@ -3951,6 +3951,22 @@ f_ases = selectbox_multi("Asesores",   ASES_ALL, "f_ases")
 f_est  = selectbox_multi("Estatus",    EST_ALL,  "f_est")
 # NEW: añadir filtro de Fuente en el sidebar
 f_fuente = selectbox_multi("Fuente", FUENTE_ALL, "f_fuente")
+# --- Nuevo: filtro Tipo de crédito / Trámite (renovación, nuevo, compra de deuda)
+try:
+    tramite_for_filter = df_cli["tramite"].fillna("").apply(lambda x: str(x).strip() if str(x).strip() else "(Sin trámite)")
+    # Normalizar valores más comunes y capitalizar
+    tramite_norm = tramite_for_filter.apply(lambda x: (
+        "Renovación" if x.casefold() in {"renovacion", "renovación", "renovar"} else
+        "Nuevo" if x.casefold() in {"nuevo", "nuevo credito", "nuevo crédito"} else
+        "Compra de deuda" if x.casefold() in {"compra", "compra de deuda", "compra_deuda" , "compra deuda"} else
+        (x if x != "(Sin trámite)" else "(Sin trámite)")
+    ))
+    TRAMITE_ALL = sorted(list(dict.fromkeys([str(x) for x in tramite_norm.unique().tolist()])))
+except Exception:
+    TRAMITE_ALL = ["Nuevo", "Renovación", "Compra de deuda"]
+
+# Control multi para tipo de crédito
+f_tramite = selectbox_multi("Tipo de crédito", TRAMITE_ALL, "f_tramite")
 
 # Validar consistencia de datos automáticamente (método seguro)
 if f_ases:
@@ -3977,6 +3993,10 @@ def _reset_filters():
         st.session_state.setdefault("f_fuente", FUENTE_ALL.copy())
         st.session_state["f_fuente_all"] = True
         st.session_state["f_fuente_ms"] = FUENTE_ALL.copy()
+        # NEW: reset para tramite
+        st.session_state.setdefault("f_tramite", TRAMITE_ALL.copy())
+        st.session_state["f_tramite_all"] = True
+        st.session_state["f_tramite_ms"] = TRAMITE_ALL.copy()
         # token opcional para forzar lógica dependiente si la usas
         st.session_state["_filters_token"] = st.session_state.get("_filters_token", 0) + 1
     except Exception:
@@ -4066,6 +4086,29 @@ try:
     except Exception:
         fuente_mask = pd.Series(True, index=df_cli.index)
 
+    # Trámite / Tipo de crédito: si está vacío o tiene todos, no filtrar
+    try:
+        if not f_tramite or len(f_tramite) == 0 or set(f_tramite) == set(TRAMITE_ALL):
+            tramite_mask = pd.Series(True, index=df_cli.index)
+        else:
+            current_tramite_for_filter = df_cli["tramite"].fillna("").apply(lambda x: str(x).strip() if str(x).strip() else "(Sin trámite)")
+            # Aplicar misma normalización ligera que usamos para TRAMITE_ALL
+            def _norm_tram(x):
+                s = x or ""
+                s_l = s.casefold()
+                if s_l in {"renovacion", "renovación", "renovar"}:
+                    return "Renovación"
+                if s_l in {"nuevo", "nuevo credito", "nuevo crédito"}:
+                    return "Nuevo"
+                if s_l in {"compra", "compra de deuda", "compra_deuda", "compra deuda"}:
+                    return "Compra de deuda"
+                return s if s != "(Sin trámite)" else "(Sin trámite)"
+
+            current_tramite_norm = current_tramite_for_filter.apply(_norm_tram)
+            tramite_mask = current_tramite_norm.isin(f_tramite)
+    except Exception:
+        tramite_mask = pd.Series(True, index=df_cli.index)
+
 except Exception as e:
     # Fallback seguro: no filtrar si algo falla
     st.sidebar.error(f"Error en filtros: {e}")
@@ -4074,7 +4117,7 @@ except Exception as e:
     est_mask = pd.Series(True, index=df_cli.index)
     fuente_mask = pd.Series(True, index=df_cli.index)
 
-df_ver = df_cli[suc_mask & est_mask & asesor_mask & fuente_mask].copy()
+df_ver = df_cli[suc_mask & est_mask & asesor_mask & fuente_mask & tramite_mask].copy()
 
 # Resumen
 st.sidebar.markdown("---")
