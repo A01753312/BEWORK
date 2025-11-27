@@ -707,6 +707,7 @@ def generar_presentacion_dashboard(df_cli: pd.DataFrame) -> bytes:
     from pptx.util import Inches, Pt
     from pptx.enum.text import PP_ALIGN
     from pptx.dml.color import RGBColor
+    from pptx.enum.shapes import MSO_SHAPE
     from io import BytesIO
     import matplotlib.pyplot as plt
     import matplotlib
@@ -795,9 +796,7 @@ def generar_presentacion_dashboard(df_cli: pd.DataFrame) -> bytes:
         
         # Caja con borde
         shape = slide.shapes.add_shape(
-        # Fuente y detalle de fuente
-        "fuente","fuente_base_nombre",
-            1,  # Rectangle
+            MSO_SHAPE.RECTANGLE,
             Inches(x_pos), Inches(y_pos), Inches(width), Inches(height)
         )
         shape.fill.solid()
@@ -3514,8 +3513,8 @@ if not current_user():
         st.stop()
 
 # Sidebar: info + logout + admin panel
-u = current_user()
-st.sidebar.markdown(f"**Usuario:** {u.get('user') or u.get('email')} — _{u['role']}_")
+u = current_user() or {}
+st.sidebar.markdown(f"**Usuario:** {u.get('user') or u.get('email','')} — _{u.get('role','')}_")
 if st.sidebar.button("Cerrar sesión"):
     st.session_state["auth_user"] = None
     # Limpiar filtros y campos de login/alta para evitar que queden visibles
