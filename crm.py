@@ -783,9 +783,8 @@ def generar_presentacion_dashboard(df_cli: pd.DataFrame) -> bytes:
         ("Total de Clientes", total_clientes, "👥", ""),
         ("Dispersados (Éxito)", dispersados, "✅", f"{tasa_exito:.1f}%"),
         ("En Proceso", en_proceso, "⏳", f"{tasa_proceso:.1f}%"),
-        ("Rechazados", rechazados, "❌", f"{tasa_rechazo:.1f}%")
     ]
-    
+
     x_start = 0.5
     y_pos = 1.5
     width = 2.2
@@ -797,6 +796,8 @@ def generar_presentacion_dashboard(df_cli: pd.DataFrame) -> bytes:
         
         # Caja con borde
         shape = slide.shapes.add_shape(
+        # Fuente y detalle de fuente
+        "fuente","fuente_base_nombre",
             1,  # Rectangle
             Inches(x_pos), Inches(y_pos), Inches(width), Inches(height)
         )
@@ -2547,9 +2548,34 @@ def selectbox_multi(label: str, options: list[str], state_key: str) -> list[str]
 # ---------- Sidebar (filtros + acciones) ----------
 # Columnas esperadas en el CSV / DataFrame de clientes
 COLUMNS = [
-    "id","nombre","sucursal","asesor","fecha_ingreso","fecha_dispersion",
-    "estatus","monto_propuesta","monto_final","segundo_estatus","observaciones",
-    "score","telefono","correo","analista","fuente"
+    "id",
+    "nombre",
+    "telefono",
+    "correo",
+    # trámite y entidad
+    "tramite",
+    "entidad",
+    # montos / plazo
+    "monto_alcanza",
+    "monto_solicitado",
+    "plazo",
+    # personales
+    "estado_civil",
+    "tipo_vivienda",
+    "tiempo_pensionado",
+    # SIPRE
+    "contrasena_sipre",
+    # referencias
+    "ref1_nombre","ref1_telefono","ref1_parentesco",
+    "ref2_nombre","ref2_telefono","ref2_parentesco",
+    # asesor / fuente
+    "asesor","asesor_venta","fuente","fuente_base_nombre",
+    # fechas
+    "fecha_ingreso","fecha_dispersion","fecha_proximo",
+    # estatus / montos históricos
+    "estatus","segundo_estatus","monto_propuesta","monto_final",
+    # utilitarios
+    "observaciones","score","analista","sucursal"
 ]
 
 def cargar_clientes(force_reload: bool = False) -> pd.DataFrame:
@@ -4861,34 +4887,64 @@ with tab_cli:
                 nombre_n = st.text_input("Nombre *")
                 sucursal_n = st.selectbox("Sucursal *", SUCURSALES)
 
-                # REPLACED: permitir elegir un asesor existente dentro del form,
-                # o usar el "Nuevo asesor" si el checkbox (fuera del form) está marcado.
+                # Tipo de trámite y entidad
+                tramite_n = st.selectbox("Tipo de Tramite", ["Nuevo", "Renovación", "Compra de deuda"], index=0)
+                entidad_n = st.selectbox("Entidad", ["INBURSA", "MULTIVA", "BANCREA", "Otra"], index=0)
+
+                # Asesor: elegir existente o usar el 'Nuevo asesor' checkbox (definido arriba)
                 raw_ases = [a for a in df_cli["asesor"].fillna("").unique() if str(a).strip()]
                 asesores_exist = sorted(list(dict.fromkeys([_norm_sin_asesor_label(a) for a in raw_ases])))
-                # Construir opciones sin duplicados (asegurando la etiqueta estándar "(Sin asesor)")
                 asesores_choices = list(dict.fromkeys(["(Sin asesor)"] + asesores_exist))
                 asesor_select = st.selectbox("Asesor", asesores_choices, key="form_ases_select")
-
                 if st.session_state.get("form_new_asesor_toggle", False):
-                    # si el usuario marcó "Nuevo asesor" usamos el texto ingresado (tiene prioridad)
                     asesor_n = st.session_state.get("form_nuevo_asesor", "").strip()
                 else:
-                    # usar la selección del selectbox (o '' si eligió "(Sin asesor)")
                     asesor_n = "" if asesor_select == "(Sin asesor)" else asesor_select
 
                 analista_n = st.text_input("Analista")
             with c2:
-                fecha_ingreso_n = st.date_input("Fecha ingreso", value=date.today())
-                fecha_dispersion_n = st.date_input("Fecha dispersión", value=date.today())
-                estatus_n = st.selectbox("Estatus", ESTATUS_OPCIONES, index=0)
-                segundo_estatus_n = st.selectbox("Segundo estatus", SEGUNDO_ESTATUS_OPCIONES, index=0)
+                telefono_n = st.text_input("Telefono movil")
+                monto_alcanza_n = st.text_input("Monto que alcanza")
+                monto_solicitado_n = st.text_input("Monto solicitado")
+                plazo_n = st.text_input("Plazo (meses)")
+                estado_civil_n = st.selectbox("Estado civil", ["Soltero", "Viudo", "Casado", "Otra"])
+                tipo_vivienda_n = st.selectbox("Tipo de vivienda", ["Propia", "Rentada", "Otra"])
+                tiempo_pensionado_n = st.text_input("Tiempo de pensionado (años)")
             with c3:
+                correo_n = st.text_input("Correo")
+                contrasena_sipre_n = st.text_input("Contraseña SIPRE", type="password")
+                st.markdown("**Referencia 1**")
+                ref1_nombre_n = st.text_input("Nombre", key="ref1_nombre")
+                ref1_telefono_n = st.text_input("Teléfono", key="ref1_telefono")
+                ref1_parentesco_n = st.text_input("Parentesco", key="ref1_parentesco")
+                st.markdown("**Referencia 2**")
+                ref2_nombre_n = st.text_input("Nombre", key="ref2_nombre")
+                ref2_telefono_n = st.text_input("Teléfono", key="ref2_telefono")
+                ref2_parentesco_n = st.text_input("Parentesco", key="ref2_parentesco")
+
+                # Fuente: leads o base (si es base pedimos nombre de la base)
+                fuente_tipo_n = st.selectbox("Fuente (tipo)", ["Leads", "Base"], index=0)
+                if fuente_tipo_n == "Base":
+                    fuente_base_nombre_n = st.text_input("Nombre de la base (si aplica)")
+                else:
+                    fuente_base_nombre_n = ""
+
+                fecha_ingreso_n = st.date_input("Fecha ingreso", value=date.today())
+
+                # Estatus dinámico según entidad seleccionada
+                ENTIDAD_ESTATUS = {
+                    "INBURSA": ["Ingresado","En firma","En proceso de autorizacion","Enrolamiento","Dispersado","Rechazado"],
+                    "MULTIVA": ["En espera de solicitud","Envio de solicitud firmada y con evidencia","Contrato","Dispersado","Rechazado"],
+                    "BANCREA": ["En espera de carta libranza","Contrato","Dispersado","Rechazado"],
+                }
+                estatus_options = ENTIDAD_ESTATUS.get(entidad_n, ESTATUS_OPCIONES)
+                estatus_n = st.selectbox("Estatus", estatus_options, index=0)
+                segundo_estatus_n = st.selectbox("Segundo estatus", SEGUNDO_ESTATUS_OPCIONES, index=0)
+                # valores adicionales heredados
                 monto_prop_n = st.text_input("Monto propuesta", value="")
                 monto_final_n = st.text_input("Monto final", value="")
                 score_n = st.text_input("Score", value="")
-                telefono_n = st.text_input("Teléfono")
-                correo_n = st.text_input("Correo")
-                fuente_n = st.text_input("Fuente", value="")
+                analista_n = analista_n if 'analista_n' in locals() else ""
             obs_n = st.text_area("Observaciones")
 
             st.markdown("**Documentos:**")
@@ -4937,20 +4993,37 @@ with tab_cli:
                         nuevo = {
                             "id": cid,
                             "nombre": nombre_n.strip(),
-                            "sucursal": sucursal_n,
+                            "telefono": telefono_n.strip() if 'telefono_n' in locals() else "",
+                            "correo": correo_n.strip() if 'correo_n' in locals() else "",
+                            "tramite": tramite_n,
+                            "entidad": entidad_n,
+                            "monto_alcanza": str(monto_alcanza_n).strip() if 'monto_alcanza_n' in locals() else "",
+                            "monto_solicitado": str(monto_solicitado_n).strip() if 'monto_solicitado_n' in locals() else "",
+                            "plazo": str(plazo_n).strip() if 'plazo_n' in locals() else "",
+                            "estado_civil": estado_civil_n if 'estado_civil_n' in locals() else "",
+                            "tipo_vivienda": tipo_vivienda_n if 'tipo_vivienda_n' in locals() else "",
+                            "tiempo_pensionado": str(tiempo_pensionado_n).strip() if 'tiempo_pensionado_n' in locals() else "",
+                            "contrasena_sipre": contrasena_sipre_n if 'contrasena_sipre_n' in locals() else "",
+                            "ref1_nombre": ref1_nombre_n if 'ref1_nombre_n' in locals() else "",
+                            "ref1_telefono": ref1_telefono_n if 'ref1_telefono_n' in locals() else "",
+                            "ref1_parentesco": ref1_parentesco_n if 'ref1_parentesco_n' in locals() else "",
+                            "ref2_nombre": ref2_nombre_n if 'ref2_nombre_n' in locals() else "",
+                            "ref2_telefono": ref2_telefono_n if 'ref2_telefono_n' in locals() else "",
+                            "ref2_parentesco": ref2_parentesco_n if 'ref2_parentesco_n' in locals() else "",
                             "asesor": asesor_final,
-                            "fecha_ingreso": str(fecha_ingreso_n),
-                            "fecha_dispersion": str(fecha_dispersion_n),
+                            "asesor_venta": asesor_final,
+                            "fecha_ingreso": str(fecha_ingreso_n) if 'fecha_ingreso_n' in locals() else "",
+                            "fecha_dispersion": "",
                             "estatus": estatus_n,
-                            "monto_propuesta": str(monto_prop_n).strip(),
-                            "monto_final": str(monto_final_n).strip(),
                             "segundo_estatus": segundo_estatus_n,
+                            "monto_propuesta": str(monto_prop_n).strip() if 'monto_prop_n' in locals() else "",
+                            "monto_final": str(monto_final_n).strip() if 'monto_final_n' in locals() else "",
                             "observaciones": obs_n.strip(),
-                            "score": str(score_n).strip(),
-                            "telefono": telefono_n.strip(),
-                            "correo": correo_n.strip(),
-                            "analista": analista_n.strip(),
-                            "fuente": fuente_n.strip(),
+                            "score": str(score_n).strip() if 'score_n' in locals() else "",
+                            "analista": (analista_n.strip() if 'analista_n' in locals() and isinstance(analista_n, str) else ""),
+                            "fuente": (fuente_tipo_n if 'fuente_tipo_n' in locals() else ""),
+                            "fuente_base_nombre": (fuente_base_nombre_n if 'fuente_base_nombre_n' in locals() else ""),
+                            "sucursal": sucursal_n,
                         }
                         base = pd.concat([df_cli, pd.DataFrame([nuevo])], ignore_index=True)
                         guardar_clientes(base)
