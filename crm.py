@@ -228,23 +228,11 @@ if not current_user():
             for _k in ("login_pw", "login_user"):
                 st.session_state.pop(_k, None)
 
-            # Prueba automática de Google Sheets al iniciar sesión
-            try:
-                ok = test_gsheets_connection()
-                st.session_state["gsheets_connected"] = bool(ok)
-                if ok:
-                    try:
-                        st.toast("Conexión a Google Sheets verificada", icon="✅")
-                    except Exception:
-                        pass
-                else:
-                    st.sidebar.warning("No se pudo conectar a Google Sheets. Revisa credenciales y permisos.")
-
-                # Marcar que el usuario entró al CRM (un único inicio de sesión)
-                st.session_state["in_crm"] = True
-            except Exception as e:
-                st.session_state["gsheets_connected"] = False
-                st.sidebar.error(f"Error verificando Google Sheets: {e}")
+            # Marcar que el usuario entró al CRM (un único inicio de sesión)
+            st.session_state["in_crm"] = True
+            # Inicializar flags para la comprobación de GSheets que se hará al mostrar el CRM
+            st.session_state["gsheets_connected"] = False
+            st.session_state["gsheets_checked"] = False
 
             st.toast(f"Bienvenido, {st.session_state['auth_user']['user']}", icon="✅")
             do_rerun()
@@ -269,6 +257,21 @@ st.title("CRM — Auth & Google Drive/Sheets Test")
 if current_user():
     if st.session_state.get('in_crm'):
         # Usuario autenticado y redirigido al CRM principal
+        # Ejecutar la comprobación de Google Sheets solo una vez al entrar al CRM
+        if not st.session_state.get('gsheets_checked'):
+            try:
+                ok = test_gsheets_connection(show_toast=False)
+                st.session_state['gsheets_connected'] = bool(ok)
+                st.session_state['gsheets_checked'] = True
+                if ok:
+                    st.success(f"Google Sheets conectado: {st.session_state.get('gsheet_title') or GSHEET_ID}")
+                else:
+                    st.warning("No se pudo conectar a Google Sheets. Algunas funciones pueden no estar disponibles.")
+            except Exception as e:
+                st.session_state['gsheets_connected'] = False
+                st.session_state['gsheets_checked'] = True
+                st.error(f"Error comprobando Google Sheets: {e}")
+
         st.header("CRM — Panel Principal")
         st.write(f"Bienvenido, {current_user().get('user')}! Estás dentro del CRM.")
         gs_ok = st.session_state.get('gsheets_connected', False)
