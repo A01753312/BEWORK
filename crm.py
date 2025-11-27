@@ -656,29 +656,28 @@ def calcular_analisis_financiero(df: pd.DataFrame) -> dict:
         except (ValueError, TypeError):
             return 0.0
     
-    # Limpiar y convertir montos
+    # Limpiar y convertir montos (usar `monto_alcanza` como campo principal)
     df_temp = df.copy()
-    df_temp['monto_propuesta_num'] = df_temp['monto_propuesta'].apply(limpiar_monto)
-    df_temp['monto_final_num'] = df_temp['monto_final'].apply(limpiar_monto)
-    
+    df_temp['monto_alcanza_num'] = df_temp.get('monto_alcanza', "").apply(limpiar_monto)
+
     # Calcular métricas
-    total_propuesto = df_temp['monto_propuesta_num'].sum()
-    total_dispersado = df_temp[df_temp['estatus'] == 'DISPERSADO']['monto_final_num'].sum()
-    
+    total_propuesto = df_temp['monto_alcanza_num'].sum()
+    # Para dispersados usar el mismo campo si no existe monto_final
+    total_dispersado = df_temp[df_temp['estatus'] == 'DISPERSADO']['monto_alcanza_num'].sum()
+
     # Promedios
-    promedio_propuesto = df_temp['monto_propuesta_num'].mean() if len(df_temp) > 0 else 0
+    promedio_propuesto = df_temp['monto_alcanza_num'].mean() if len(df_temp) > 0 else 0
     dispersados_df = df_temp[df_temp['estatus'] == 'DISPERSADO']
-    promedio_dispersado = dispersados_df['monto_final_num'].mean() if len(dispersados_df) > 0 else 0
-    
-    # Efectividad de conversión
+    promedio_dispersado = dispersados_df['monto_alcanza_num'].mean() if len(dispersados_df) > 0 else 0
+
+    # Efectividad de conversión (financiera)
     tasa_conversion_financiera = (total_dispersado / total_propuesto * 100) if total_propuesto > 0 else 0
-    
+
     # Análisis por estatus con montos
     montos_por_estatus = df_temp.groupby('estatus').agg({
-        'monto_propuesta_num': ['sum', 'mean', 'count'],
-        'monto_final_num': ['sum', 'mean']
+        'monto_alcanza_num': ['sum', 'mean', 'count']
     }).round(2)
-    
+
     return {
         'total_propuesto': total_propuesto,
         'total_dispersado': total_dispersado,
@@ -686,8 +685,8 @@ def calcular_analisis_financiero(df: pd.DataFrame) -> dict:
         'promedio_dispersado': promedio_dispersado,
         'tasa_conversion_financiera': tasa_conversion_financiera,
         'montos_por_estatus': montos_por_estatus,
-        'clientes_con_monto': len(df_temp[df_temp['monto_propuesta_num'] > 0]),
-        'dispersados_con_monto': len(df_temp[(df_temp['estatus'] == 'DISPERSADO') & (df_temp['monto_final_num'] > 0)])
+        'clientes_con_monto': len(df_temp[df_temp['monto_alcanza_num'] > 0]),
+        'dispersados_con_monto': len(df_temp[(df_temp['estatus'] == 'DISPERSADO') & (df_temp['monto_alcanza_num'] > 0)])
     }
 
 def formatear_monto(monto: float) -> str:
@@ -884,16 +883,16 @@ def generar_presentacion_dashboard(df_cli: pd.DataFrame) -> bytes:
     # Top estatus
     if not analisis_financiero['montos_por_estatus'].empty:
         estatus_con_monto = analisis_financiero['montos_por_estatus'][
-            analisis_financiero['montos_por_estatus'][('monto_propuesta_num', 'sum')] > 0
+            analisis_financiero['montos_por_estatus'][('monto_alcanza_num', 'sum')] > 0
         ]
         top_estatus = estatus_con_monto.sort_values(
-            ('monto_propuesta_num', 'sum'), ascending=False
+            ('monto_alcanza_num', 'sum'), ascending=False
         ).head(5)
         
         # Crear gráfica de barras
         fig, ax = plt.subplots(figsize=(8, 4))
         estatus_nombres = [str(e)[:30] for e in top_estatus.index]  # Limitar longitud
-        montos = [top_estatus.loc[e, ('monto_propuesta_num', 'sum')] for e in top_estatus.index]
+        montos = [top_estatus.loc[e, ('monto_alcanza_num', 'sum')] for e in top_estatus.index]
         
         bars = ax.barh(estatus_nombres, montos, color='#28a745')
         ax.set_xlabel('Monto ($)', fontsize=11)
@@ -930,8 +929,7 @@ def generar_presentacion_dashboard(df_cli: pd.DataFrame) -> bytes:
             return 0.0
     
     df_temp['monto_analisis'] = df_temp.apply(
-        lambda row: limpiar_monto_simple(row['monto_final']) if row['estatus'] == 'DISPERSADO' 
-        else limpiar_monto_simple(row['monto_propuesta']), axis=1
+        lambda row: limpiar_monto_simple(row.get('monto_alcanza', "")), axis=1
     )
     df_analisis = df_temp[df_temp['monto_analisis'] > 0].copy()
     
@@ -2557,7 +2555,6 @@ COLUMNS = [
     "entidad",
     # montos / plazo
     "monto_alcanza",
-    "monto_solicitado",
     "plazo",
     # personales
     "estado_civil",
@@ -2572,10 +2569,10 @@ COLUMNS = [
     "asesor","asesor_venta","fuente","fuente_base_nombre",
     # fechas
     "fecha_ingreso","fecha_dispersion","fecha_proximo",
-    # estatus / montos históricos
-    "estatus","segundo_estatus","monto_propuesta","monto_final",
+    # estatus
+    "estatus",
     # utilitarios
-    "observaciones","score","analista","sucursal"
+    "observaciones","score","sucursal"
 ]
 
 def cargar_clientes(force_reload: bool = False) -> pd.DataFrame:
@@ -4240,21 +4237,21 @@ with tab_dash:
         if not analisis_financiero['montos_por_estatus'].empty:
             # Filtrar solo estatus con monto > 0
             estatus_con_monto = analisis_financiero['montos_por_estatus'][
-                analisis_financiero['montos_por_estatus'][('monto_propuesta_num', 'sum')] > 0
+                analisis_financiero['montos_por_estatus'][('monto_alcanza_num', 'sum')] > 0
             ]
             
-            # Obtener top estatus por monto propuesto
+            # Obtener top estatus por monto (monto_alcanza)
             top_estatus = estatus_con_monto.sort_values(
-                ('monto_propuesta_num', 'sum'), ascending=False
+                ('monto_alcanza_num', 'sum'), ascending=False
             ).head(5)
             
             col1, col2 = st.columns(2)
             
             # Dividir en dos columnas para mostrar mejor con texto más pequeño
             for i, (estatus, data) in enumerate(top_estatus.iterrows()):
-                monto_total = data[('monto_propuesta_num', 'sum')]
-                cantidad = data[('monto_propuesta_num', 'count')]
-                promedio = data[('monto_propuesta_num', 'mean')]
+                monto_total = data[('monto_alcanza_num', 'sum')]
+                cantidad = data[('monto_alcanza_num', 'count')]
+                promedio = data[('monto_alcanza_num', 'mean')]
                 
                 with col1 if i % 2 == 0 else col2:
                     # Usar markdown para texto más pequeño
@@ -4708,10 +4705,9 @@ with tab_dash:
             except:
                 return 0.0
         
-        # Usar monto_final para dispersados, monto_propuesta para el resto
+        # Usar monto_alcanza (campo existente) como base para análisis
         df_temp['monto_analisis'] = df_temp.apply(
-            lambda row: limpiar_monto_simple(row['monto_final']) if row['estatus'] == 'DISPERSADO' 
-            else limpiar_monto_simple(row['monto_propuesta']), axis=1
+            lambda row: limpiar_monto_simple(row.get('monto_alcanza', "")), axis=1
         )
         
         # Filtrar solo clientes con monto > 0
@@ -4901,11 +4897,11 @@ with tab_cli:
                 else:
                     asesor_n = "" if asesor_select == "(Sin asesor)" else asesor_select
 
-                analista_n = st.text_input("Analista")
+                # Analista removed per request
             with c2:
                 telefono_n = st.text_input("Telefono movil")
                 monto_alcanza_n = st.text_input("Monto que alcanza")
-                monto_solicitado_n = st.text_input("Monto solicitado")
+                # monto_solicitado removed per request
                 plazo_n = st.text_input("Plazo (meses)")
                 estado_civil_n = st.selectbox("Estado civil", ["Soltero", "Viudo", "Casado", "Otra"])
                 tipo_vivienda_n = st.selectbox("Tipo de vivienda", ["Propia", "Rentada", "Otra"])
@@ -4939,12 +4935,9 @@ with tab_cli:
                 }
                 estatus_options = ENTIDAD_ESTATUS.get(entidad_n, ESTATUS_OPCIONES)
                 estatus_n = st.selectbox("Estatus", estatus_options, index=0)
-                segundo_estatus_n = st.selectbox("Segundo estatus", SEGUNDO_ESTATUS_OPCIONES, index=0)
+                # segundo_estatus removed per request
                 # valores adicionales heredados
-                monto_prop_n = st.text_input("Monto propuesta", value="")
-                monto_final_n = st.text_input("Monto final", value="")
                 score_n = st.text_input("Score", value="")
-                analista_n = analista_n if 'analista_n' in locals() else ""
             obs_n = st.text_area("Observaciones")
 
             st.markdown("**Documentos:**")
@@ -4998,7 +4991,7 @@ with tab_cli:
                             "tramite": tramite_n,
                             "entidad": entidad_n,
                             "monto_alcanza": str(monto_alcanza_n).strip() if 'monto_alcanza_n' in locals() else "",
-                            "monto_solicitado": str(monto_solicitado_n).strip() if 'monto_solicitado_n' in locals() else "",
+                            # monto_solicitado removed
                             "plazo": str(plazo_n).strip() if 'plazo_n' in locals() else "",
                             "estado_civil": estado_civil_n if 'estado_civil_n' in locals() else "",
                             "tipo_vivienda": tipo_vivienda_n if 'tipo_vivienda_n' in locals() else "",
@@ -5015,12 +5008,9 @@ with tab_cli:
                             "fecha_ingreso": str(fecha_ingreso_n) if 'fecha_ingreso_n' in locals() else "",
                             "fecha_dispersion": "",
                             "estatus": estatus_n,
-                            "segundo_estatus": segundo_estatus_n,
-                            "monto_propuesta": str(monto_prop_n).strip() if 'monto_prop_n' in locals() else "",
-                            "monto_final": str(monto_final_n).strip() if 'monto_final_n' in locals() else "",
+                            # segundo_estatus, monto_propuesta and monto_final removed
                             "observaciones": obs_n.strip(),
                             "score": str(score_n).strip() if 'score_n' in locals() else "",
-                            "analista": (analista_n.strip() if 'analista_n' in locals() and isinstance(analista_n, str) else ""),
                             "fuente": (fuente_tipo_n if 'fuente_tipo_n' in locals() else ""),
                             "fuente_base_nombre": (fuente_base_nombre_n if 'fuente_base_nombre_n' in locals() else ""),
                             "sucursal": sucursal_n,
@@ -5069,14 +5059,11 @@ with tab_cli:
             "fecha_ingreso": st.column_config.TextColumn("Fecha ingreso (YYYY-MM-DD)"),
             "fecha_dispersion": st.column_config.TextColumn("Fecha dispersión (YYYY-MM-DD)"),
             "estatus": st.column_config.SelectboxColumn("Estatus", options=ESTATUS_OPCIONES, required=True),
-            "monto_propuesta": st.column_config.TextColumn("Monto propuesta"),
-            "monto_final": st.column_config.TextColumn("Monto final"),
-            "segundo_estatus": st.column_config.SelectboxColumn("Segundo estatus", options=SEGUNDO_ESTATUS_OPCIONES),
             "observaciones": st.column_config.TextColumn("Observaciones"),
             "score": st.column_config.TextColumn("Score"),
             "telefono": st.column_config.TextColumn("Teléfono"),
             "correo": st.column_config.TextColumn("Correo"),
-            "analista": st.column_config.TextColumn("Analista"),
+            # analista column removed
             "fuente": st.column_config.TextColumn("Fuente"),
         }
 
@@ -5118,22 +5105,21 @@ with tab_cli:
                 cid_quick = st.selectbox("Cliente", ids_quick, format_func=lambda x: f"{x} - {get_nombre_by_id(x)}")
                 nombre_q = get_nombre_by_id(cid_quick)
                 estatus_actual = get_field_by_id(cid_quick, "estatus")
-                seg_actual = get_field_by_id(cid_quick, "segundo_estatus")
             with col_q2:
                 nuevo_estatus = st.selectbox("Nuevo estatus", ESTATUS_OPCIONES, index=ESTATUS_OPCIONES.index(estatus_actual) if estatus_actual in ESTATUS_OPCIONES else 0)
             with col_q3:
-                nuevo_seg = st.selectbox("Segundo estatus", SEGUNDO_ESTATUS_OPCIONES, index=SEGUNDO_ESTATUS_OPCIONES.index(seg_actual) if seg_actual in SEGUNDO_ESTATUS_OPCIONES else 0)
+                # segundo_estatus removed per request; placeholder column removed
+                st.write("")
             with col_q4:
                 obs_q = st.text_input("Observaciones (opcional)")
                 if st.button("Actualizar estatus"):
                     base = df_cli.set_index("id")
                     base.at[cid_quick, "estatus"] = nuevo_estatus
-                    base.at[cid_quick, "segundo_estatus"] = nuevo_seg
                     df_cli = base.reset_index()
                     guardar_clientes(df_cli)
-                    # registrar en historial quién hizo el cambio (modificar)
+                    # registrar en historial quién hizo el cambio (sin segundo estatus)
                     actor = (current_user() or {}).get("user") or (current_user() or {}).get("email")
-                    append_historial(cid_quick, nombre_q, estatus_actual, nuevo_estatus, seg_actual, nuevo_seg, obs_q, action="ESTATUS MODIFICADO", actor=actor)
+                    append_historial(cid_quick, nombre_q, estatus_actual, nuevo_estatus, "", "", obs_q, action="ESTATUS MODIFICADO", actor=actor)
                     st.success(f"Estatus actualizado para {cid_quick} ✅")
                     do_rerun()
 
@@ -5443,8 +5429,8 @@ with tab_import:
 
     import_cols_required = [
         "nombre","sucursal","asesor","fecha_ingreso","fecha_dispersion",
-        "estatus","monto_propuesta","monto_final","segundo_estatus",
-        "observaciones","score","telefono","correo","analista"
+        "estatus",
+        "observaciones","score","telefono","correo"
     ]
     import_cols_optional = ["id", "fuente"]  # si viene, permite actualizar por ID
 
@@ -5544,7 +5530,9 @@ with tab_import:
             # Detectar nuevos valores que no estén en los catálogos actuales
             nuevas_suc = sorted(set(df_norm.loc[df_norm["sucursal"].ne(""), "sucursal"]) - set(SUCURSALES))
             nuevos_est = sorted(set(df_norm.loc[df_norm["estatus"].ne(""), "estatus"]) - set(ESTATUS_OPCIONES))
-            nuevos_seg = sorted(set(df_norm.loc[df_norm["segundo_estatus"].ne(""), "segundo_estatus"]) - set(SEGUNDO_ESTATUS_OPCIONES))
+            nuevos_seg = []
+            if "segundo_estatus" in df_norm.columns:
+                nuevos_seg = sorted(set(df_norm.loc[df_norm["segundo_estatus"].ne(""), "segundo_estatus"]) - set(SEGUNDO_ESTATUS_OPCIONES))
 
             # Agregar automáticamente y persistir
             if nuevas_suc:
