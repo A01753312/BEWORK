@@ -10,8 +10,6 @@ import hashlib
 from pathlib import Path
 import gspread
 from google.oauth2.service_account import Credentials
-from google_auth_oauthlib.flow import Flow
-from googleapiclient.discovery import build
 import os
 
 # --- Configuración de página ---
@@ -99,114 +97,7 @@ def do_rerun():
     except Exception:
         return
 
-# === OAuth2 Drive (same flow as your original script) ===
-if "drive_creds" not in st.session_state:
-    st.session_state.drive_creds = None
-
-# Read client config from st.secrets if available (keeps your original flow)
-CLIENT_ID = st.secrets.get("GOOGLE_CLIENT_ID") if hasattr(st, "secrets") else None
-CLIENT_SECRET = st.secrets.get("GOOGLE_CLIENT_SECRET") if hasattr(st, "secrets") else None
-REDIRECT_URI = st.secrets.get("REDIRECT_URI") if hasattr(st, "secrets") else None
-
-# Scopes
-SCOPES = [
-    "https://www.googleapis.com/auth/drive.file",
-    "https://www.googleapis.com/auth/drive.metadata.readonly",
-    "https://www.googleapis.com/auth/spreadsheets"
-]
-
-# Sidebar: Drive connect/disconnect using OAuth2 web flow
-st.sidebar.markdown("---")
-st.sidebar.markdown("### 📂 Conexión a Google Drive")
-
-def _build_auth_url():
-    cid = CLIENT_ID
-    cres = CLIENT_SECRET
-    ruri = REDIRECT_URI
-    if not (cid and cres and ruri) and hasattr(st, "secrets"):
-        s = dict(st.secrets)
-        if "web" in s and isinstance(s["web"], dict):
-            cid = cid or s["web"].get("client_id")
-            cres = cres or s["web"].get("client_secret")
-            ruri = ruri or (s["web"].get("redirect_uris") or [None])[0]
-
-    if not (cid and ruri):
-        return None
-
-    scope_str = "%20".join([s.replace("https://www.googleapis.com/auth/", "https://www.googleapis.com/auth/") for s in SCOPES])
-    auth_url = (
-        "https://accounts.google.com/o/oauth2/v2/auth"
-        f"?response_type=code&client_id={cid}"
-        f"&redirect_uri={ruri}"
-        f"&scope={scope_str}"
-        f"&access_type=offline&prompt=consent"
-    )
-    return auth_url
-
-auth_url = _build_auth_url()
-if not st.session_state.get("drive_creds"):
-    if auth_url:
-        st.sidebar.markdown(f"[🔐 Conectar con Google Drive]({auth_url})")
-    else:
-        st.sidebar.info("Configura `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` y `REDIRECT_URI` en `st.secrets` para usar OAuth2.")
-else:
-    st.sidebar.success("✅ Conectado a Google Drive")
-    if st.sidebar.button("🔌 Desconectar Drive", help="Cerrar sesión de Google Drive"):
-        st.session_state.drive_creds = None
-        if "processed_auth_code" in st.session_state:
-            del st.session_state.processed_auth_code
-        st.experimental_set_query_params()
-        st.sidebar.success("Google Drive desconectado")
-        st.experimental_rerun()
-
-# Procesar el parámetro de autorización devuelto por Google
-query_params = st.experimental_get_query_params()
-if "code" in query_params and not st.session_state.get("drive_creds"):
-    code = query_params.get("code")
-    if isinstance(code, list):
-        code = code[0]
-
-    if "processed_auth_code" not in st.session_state or st.session_state.processed_auth_code != code:
-        try:
-            client_config = None
-            if hasattr(st, "secrets"):
-                s = dict(st.secrets)
-                if all(k in s for k in ("GOOGLE_CLIENT_ID","GOOGLE_CLIENT_SECRET","REDIRECT_URI")):
-                    client_config = {
-                        "web": {
-                            "client_id": s["GOOGLE_CLIENT_ID"],
-                            "client_secret": s["GOOGLE_CLIENT_SECRET"],
-                            "redirect_uris": [s.get("REDIRECT_URI")],
-                            "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-                            "token_uri": "https://oauth2.googleapis.com/token",
-                        }
-                    }
-                elif "web" in s and isinstance(s["web"], dict):
-                    client_config = {"web": s["web"]}
-
-            if not client_config:
-                client_config = {
-                    "web": {
-                        "client_id": CLIENT_ID,
-                        "client_secret": CLIENT_SECRET,
-                        "redirect_uris": [REDIRECT_URI],
-                        "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-                        "token_uri": "https://oauth2.googleapis.com/token",
-                    }
-                }
-
-            flow = Flow.from_client_config(client_config, scopes=SCOPES)
-            flow.redirect_uri = client_config["web"].get("redirect_uris", [None])[0]
-            flow.fetch_token(code=code)
-            st.session_state.drive_creds = flow.credentials
-            st.session_state.processed_auth_code = code
-            st.experimental_set_query_params()
-            st.success("✅ Autenticación exitosa con Google Drive")
-            st.experimental_rerun()
-        except Exception as e:
-            st.experimental_set_query_params()
-            st.session_state.processed_auth_code = None
-            st.sidebar.error(f"Error en la autenticación: {e}")
+# NOTE: OAuth2 Drive flow removed — using only service-account credentials
 
 # --- Google Sheets credential helper (service account fallback) ---
 _GS_CREDS = None
@@ -258,14 +149,11 @@ def _gs_credentials():
 
 def test_gsheets_connection(show_toast: bool = True) -> bool:
     try:
-        creds = None
-        if st.session_state.get("drive_creds"):
-            creds = st.session_state.get("drive_creds")
-        else:
-            creds = _gs_credentials()
+        # Use only service-account credentials for automated checks
+        creds = _gs_credentials()
 
         if creds is None:
-            st.sidebar.error("❌ No se encontraron credenciales (OAuth o service account).")
+            st.sidebar.error("❌ No se encontraron credenciales (service account).")
             if show_toast:
                 try: st.toast("No se encontraron credenciales para Google.", icon="❌")
                 except: pass
@@ -351,6 +239,9 @@ if not current_user():
                         pass
                 else:
                     st.sidebar.warning("No se pudo conectar a Google Sheets. Revisa credenciales y permisos.")
+
+                # Marcar que el usuario entró al CRM (un único inicio de sesión)
+                st.session_state["in_crm"] = True
             except Exception as e:
                 st.session_state["gsheets_connected"] = False
                 st.sidebar.error(f"Error verificando Google Sheets: {e}")
@@ -371,7 +262,7 @@ if current_user():
         st.session_state["in_crm"] = False
         do_rerun()
 
-st.sidebar.caption("Para OAuth2: configura `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` y `REDIRECT_URI` en `st.secrets` (o carga el JSON del cliente en `st.secrets['web']`).\nPara service account: coloca `service_account.json` o configura `st.secrets['service_account']`.")
+st.sidebar.caption("Para service account: coloca `service_account.json` o configura `st.secrets['service_account']`.")
 
 # --- Main placeholder ---
 st.title("CRM — Auth & Google Drive/Sheets Test")
