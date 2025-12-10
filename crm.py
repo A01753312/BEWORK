@@ -161,18 +161,18 @@ st.markdown("""
     }
     
     .stTabs [aria-selected="true"] {
-        background-color: #0A3D62;
-        color: #2D3748;
-        border-color: #0A3D62;
-        box-shadow: 0 2px 8px rgba(10, 61, 98, 0.3);
+        background-color: #4DA8FF; /* azul claro para pestaña seleccionada */
+        color: #FFFFFF;
+        border-color: #4DA8FF;
+        box-shadow: 0 2px 8px rgba(77, 168, 255, 0.3);
         font-weight: 700;
     }
     
     .stTabs [data-baseweb="tab"]:hover {
         background-color: #EDF2F7;
         color: #2D3748;
-        border-color: #0A3D62;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        border-color: #4DA8FF;
+        box-shadow: 0 1px 3px rgba(77, 168, 255, 0.12);
     }
     
     /* Mejorar métricas con tema claro */
