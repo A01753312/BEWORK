@@ -87,7 +87,7 @@ def test_gestion_dataframes():
     # Definir columnas básicas
     COLUMNS_TEST = [
         "id", "nombre", "sucursal", "asesor", "fecha_ingreso", "fecha_dispersion",
-        "estatus", "monto_propuesta", "monto_final", "segundo_estatus", 
+        "estatus", "monto_propuesta", "monto_final",
         "observaciones", "score", "telefono", "correo", "analista", "fuente"
     ]
     
@@ -102,9 +102,8 @@ def test_gestion_dataframes():
             "fecha_dispersion": "2024-01-20",
             "estatus": "DISPERSADO",
             "monto_propuesta": "100000",
-            "monto_final": "95000",
-            "segundo_estatus": "",
-            "observaciones": "Cliente de prueba",
+                "monto_final": "95000",
+                "observaciones": "Cliente de prueba",
             "score": "750",
             "telefono": "5551234567",
             "correo": "juan.perez@test.com",
@@ -120,9 +119,8 @@ def test_gestion_dataframes():
             "fecha_dispersion": "",
             "estatus": "EN ONBOARDING",
             "monto_propuesta": "75000",
-            "monto_final": "",
-            "segundo_estatus": "PEND.DOC.PARA EVALUACION",
-            "observaciones": "",
+                "monto_final": "",
+                "observaciones": "",
             "score": "680",
             "telefono": "5557654321",
             "correo": "maria.rodriguez@test.com",

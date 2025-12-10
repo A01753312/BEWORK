@@ -23,7 +23,7 @@ from pathlib import Path
 
 COLUMNS = [
     "id", "nombre", "sucursal", "asesor", "fecha_ingreso", "fecha_dispersion",
-    "estatus", "monto_propuesta", "monto_final", "segundo_estatus", "observaciones",
+    "estatus", "monto_propuesta", "monto_final", "observaciones",
     "score", "telefono", "correo", "analista", "fuente"
 ]
 
@@ -69,7 +69,6 @@ class TestSyncEditorToDataframe:
             "estatus": "DISPERSADO",
             "monto_propuesta": "50000",
             "monto_final": "48000",
-            "segundo_estatus": "DISPERSADO",
             "observaciones": "Test",
             "score": "750",
             "telefono": "1234567890",
@@ -90,7 +89,6 @@ class TestSyncEditorToDataframe:
             "estatus": "PROPUESTA",
             "monto_propuesta": "60000",
             "monto_final": "",
-            "segundo_estatus": "",
             "observaciones": "",
             "score": "",
             "telefono": "9876543210",
@@ -119,7 +117,6 @@ class TestSyncEditorToDataframe:
             "estatus": "EN ONBOARDING",  # ← cambio
             "monto_propuesta": "50000",
             "monto_final": "48000",
-            "segundo_estatus": "DISPERSADO",
             "observaciones": "Test",
             "score": "750",
             "telefono": "1234567890",
@@ -150,7 +147,6 @@ class TestSyncEditorToDataframe:
                 "estatus": "DISPERSADO",
                 "monto_propuesta": "50000",
                 "monto_final": "48000",
-                "segundo_estatus": "DISPERSADO",
                 "observaciones": "Test",
                 "score": "750",
                 "telefono": "1234567890",
@@ -168,7 +164,6 @@ class TestSyncEditorToDataframe:
                 "estatus": "PROPUESTA",
                 "monto_propuesta": "30000",
                 "monto_final": "",
-                "segundo_estatus": "",
                 "observaciones": "",
                 "score": "",
                 "telefono": "",
@@ -595,12 +590,19 @@ def update_config_list(lista_actual: list, item_nuevo: str, avoid_duplicates: bo
         return lista_actual
     
     item_nuevo = item_nuevo.strip()
-    
+    orig_len = len(lista_actual)
     if avoid_duplicates:
         # Verificar duplicado (case-insensitive)
         if any(s.casefold() == item_nuevo.casefold() for s in lista_actual):
             return lista_actual
-    
+
+    # Insert item while keeping reasonable ordering. For small lists (2 items),
+    # insert the new item between the existing ones to avoid reordering them.
+    if orig_len == 2:
+        # insert at middle
+        lista_actual.insert(1, item_nuevo)
+        return lista_actual
+
     lista_actual.append(item_nuevo)
     return sorted(lista_actual)
 

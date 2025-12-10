@@ -32,7 +32,7 @@ try:
         load_sucursales, save_sucursales, load_estatus, save_estatus,
         cargar_historial, append_historial,
         DATA_DIR, CLIENTES_CSV, DOCS_DIR, HISTORIAL_CSV,
-        COLUMNS, ESTATUS_OPCIONES, SEGUNDO_ESTATUS_OPCIONES, SUCURSALES
+        COLUMNS, ESTATUS_OPCIONES, SUCURSALES
     )
     print("✅ Importación del módulo CRM exitosa")
 except ImportError as e:
@@ -114,7 +114,6 @@ class TestCRMCompleto(unittest.TestCase):
                 "estatus": "DISPERSADO",
                 "monto_propuesta": "100000",
                 "monto_final": "95000",
-                "segundo_estatus": "",
                 "observaciones": "Cliente de prueba",
                 "score": "750",
                 "telefono": "5551234567",
@@ -132,7 +131,6 @@ class TestCRMCompleto(unittest.TestCase):
                 "estatus": "EN ONBOARDING",
                 "monto_propuesta": "75000",
                 "monto_final": "",
-                "segundo_estatus": "PEND.DOC.PARA EVALUACION",
                 "observaciones": "",
                 "score": "680",
                 "telefono": "5557654321",
@@ -355,7 +353,6 @@ class TestCRMCompleto(unittest.TestCase):
             "estatus": "PENDIENTE CLIENTE",
             "monto_propuesta": "50000",
             "monto_final": "",
-            "segundo_estatus": "",
             "observaciones": "Cliente creado por test de integración",
             "score": "700",
             "telefono": "5551234567",
@@ -456,7 +453,7 @@ def ejecutar_test_diagnostico():
     # 4. Verificar configuración
     print(f"\n⚙️ Columnas definidas: {len(COLUMNS)}")
     print(f"⚙️ Opciones de estatus: {len(ESTATUS_OPCIONES)}")
-    print(f"⚙️ Opciones segundo estatus: {len(SEGUNDO_ESTATUS_OPCIONES)}")
+    
     print(f"⚙️ Sucursales: {len(SUCURSALES)}")
     
     # 5. Test básico de carga

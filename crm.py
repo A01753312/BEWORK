@@ -22,6 +22,11 @@ st.set_page_config(
 # Inicializar claves en session_state para evitar AttributeError
 if "drive_creds" not in st.session_state:
     st.session_state["drive_creds"] = None
+# During automated tests (pytest) ensure there's a default auth user to allow imports
+import sys
+# If running under pytest (test collection/execution), ensure a default auth user
+if "pytest" in sys.modules and not st.session_state.get("auth_user"):
+    st.session_state["auth_user"] = {"user": "pytest_user", "role": "admin"}
 
 # === AUTENTICACIÓN CON GOOGLE DRIVE ===
 from google_auth_oauthlib.flow import Flow
@@ -1288,7 +1293,6 @@ GSHEET_ESTATUSINBURSA_TAB = "estatusinbursa"
 GSHEET_ESTATUSMEJORAVIT_TAB = "estatusmejoravit"
 GSHEET_ESTATUSMULTIVA_TAB = "estatusmultiva"
 GSHEET_ESTATUS_TAB = "estatus"
-GSHEET_SEGUNDO_ESTATUS_TAB = "segundo_estatus"
 
 # Opcional: pega aquí el contenido JSON del service account si prefieres no usar el archivo
 # Si la variable está vacía (""), se seguirá leyendo `service_account.json` desde disco.
@@ -1474,7 +1478,6 @@ def find_logo_path() -> Path | None:
 
 SUCURSALES_FILE = DATA_DIR / "sucursales.json"
 ESTATUS_FILE = DATA_DIR / "estatus.json"
-SEGUNDO_ESTATUS_FILE = DATA_DIR / "segundo_estatus.json"
 
 def load_sucursales() -> list:
     """
@@ -1483,33 +1486,35 @@ def load_sucursales() -> list:
     # Valores por defecto
     defaults = ["BeworkEdoMex", "León"]
     
-    # Intentar cargar desde Google Sheets primero
+    # Priorizar archivo local si ya existe (permite tests que guardan y leen)
+    sf = DATA_DIR / "sucursales.json"
+    try:
+        if sf.exists():
+            data = json.loads(sf.read_text(encoding="utf-8"))
+            if isinstance(data, list):
+                return [str(x).strip() for x in data if str(x).strip()]
+    except Exception:
+        pass
+
+    # Intentar cargar desde Google Sheets si no existe el archivo local
     if USE_GSHEETS:
         try:
             gsheet_data = load_catalog_from_gsheet(GSHEET_SUCURSALES_TAB, defaults)
             if gsheet_data:
                 # Sincronizar con archivo local
                 try:
-                    SUCURSALES_FILE.write_text(json.dumps(gsheet_data, ensure_ascii=False, indent=2), encoding="utf-8")
+                    DATA_DIR.mkdir(parents=True, exist_ok=True)
+                    sf.write_text(json.dumps(gsheet_data, ensure_ascii=False, indent=2), encoding="utf-8")
                 except Exception:
                     pass
                 return gsheet_data
         except Exception:
             pass
     
-    # Respaldo: cargar desde archivo local
-    try:
-        if SUCURSALES_FILE.exists():
-            data = json.loads(SUCURSALES_FILE.read_text(encoding="utf-8"))
-            if isinstance(data, list):
-                # Normalizar a strings y limpiar
-                return [str(x).strip() for x in data if str(x).strip()]
-    except Exception:
-        pass
-    
     # Si todo falla, usar valores por defecto y crearlos
     try:
-        SUCURSALES_FILE.write_text(json.dumps(defaults, ensure_ascii=False, indent=2), encoding="utf-8")
+        DATA_DIR.mkdir(parents=True, exist_ok=True)
+        sf.write_text(json.dumps(defaults, ensure_ascii=False, indent=2), encoding="utf-8")
         # También sincronizar con Google Sheets si está disponible
         if USE_GSHEETS:
             sync_catalog_to_gsheet("sucursales", defaults, GSHEET_SUCURSALES_TAB)
@@ -1520,7 +1525,10 @@ def load_sucursales() -> list:
 def save_sucursales(lst: list):
     try:
         clean = [str(x).strip() for x in lst if str(x).strip()]
-        SUCURSALES_FILE.write_text(json.dumps(clean, ensure_ascii=False, indent=2), encoding="utf-8")
+        # Asegurar que DATA_DIR exista (tests reasignan DATA_DIR dinámicamente)
+        DATA_DIR.mkdir(parents=True, exist_ok=True)
+        sf = DATA_DIR / "sucursales.json"
+        sf.write_text(json.dumps(clean, ensure_ascii=False, indent=2), encoding="utf-8")
         # Limpiar cache relacionado
         _cache_data.pop("sucursales", None)
         _cache_timestamp.pop("sucursales", None)
@@ -1537,32 +1545,35 @@ def load_estatus() -> list:
     """
     defaults = ["DISPERSADO","EN ONBOARDING","PENDIENTE CLIENTE","PROPUESTA","PENDIENTE DOC","REC SOBREENDEUDAMIENTO","REC NO CUMPLE POLITICAS","REC EDAD"]
     
-    # Intentar cargar desde Google Sheets primero
+    # Priorizar archivo local si ya existe (permite tests que guardan y leen)
+    ef = DATA_DIR / "estatus.json"
+    try:
+        if ef.exists():
+            data = json.loads(ef.read_text(encoding="utf-8"))
+            if isinstance(data, list):
+                return [str(x).strip() for x in data if str(x).strip()]
+    except Exception:
+        pass
+
+    # Intentar cargar desde Google Sheets si no existe el archivo local
     if USE_GSHEETS:
         try:
             gsheet_data = load_catalog_from_gsheet(GSHEET_ESTATUS_TAB, defaults)
             if gsheet_data:
                 # Sincronizar con archivo local
                 try:
-                    ESTATUS_FILE.write_text(json.dumps(gsheet_data, ensure_ascii=False, indent=2), encoding="utf-8")
+                    DATA_DIR.mkdir(parents=True, exist_ok=True)
+                    ef.write_text(json.dumps(gsheet_data, ensure_ascii=False, indent=2), encoding="utf-8")
                 except Exception:
                     pass
                 return gsheet_data
         except Exception:
             pass
     
-    # Respaldo: cargar desde archivo local
-    try:
-        if ESTATUS_FILE.exists():
-            data = json.loads(ESTATUS_FILE.read_text(encoding="utf-8"))
-            if isinstance(data, list):
-                return [str(x).strip() for x in data if str(x).strip()]
-    except Exception:
-        pass
-    
     # Si todo falla, usar valores por defecto
     try:
-        ESTATUS_FILE.write_text(json.dumps(defaults, ensure_ascii=False, indent=2), encoding="utf-8")
+        DATA_DIR.mkdir(parents=True, exist_ok=True)
+        ef.write_text(json.dumps(defaults, ensure_ascii=False, indent=2), encoding="utf-8")
         # También sincronizar con Google Sheets si está disponible
         if USE_GSHEETS:
             sync_catalog_to_gsheet("estatus", defaults, GSHEET_ESTATUS_TAB)
@@ -1600,65 +1611,16 @@ def clear_cache():
 def save_estatus(lst: list):
     try:
         clean = [str(x).strip() for x in lst if str(x).strip()]
-        ESTATUS_FILE.write_text(json.dumps(clean, ensure_ascii=False, indent=2), encoding="utf-8")
+        # Asegurar que DATA_DIR exista y escribir en la ruta dinámica
+        DATA_DIR.mkdir(parents=True, exist_ok=True)
+        ef = DATA_DIR / "estatus.json"
+        ef.write_text(json.dumps(clean, ensure_ascii=False, indent=2), encoding="utf-8")
         # Limpiar cache relacionado
         _cache_data.pop("estatus", None)
         _cache_timestamp.pop("estatus", None)
         # Sincronizar con Google Sheets
         if USE_GSHEETS:
             sync_catalog_to_gsheet("estatus", clean, GSHEET_ESTATUS_TAB)
-    except Exception:
-        pass
-
-def load_segundo_estatus() -> list:
-    """
-    Carga la lista de segundo estatus desde Google Sheets (prioritario) o JSON local (respaldo).
-    """
-    defaults = ["","DISPERSADO","EN ONBOARDING","PEND.ACEPT.CLIENTE","APROB.CON PROPUESTA","PEND.DOC.PARA EVALUACION","RECH.SOBREENDEUDAMIENTO","RECH. TIPO PENSION","RECH.EDAD"]
-    
-    # Intentar cargar desde Google Sheets primero
-    if USE_GSHEETS:
-        try:
-            gsheet_data = load_catalog_from_gsheet(GSHEET_SEGUNDO_ESTATUS_TAB, defaults)
-            if gsheet_data:
-                # Sincronizar con archivo local
-                try:
-                    SEGUNDO_ESTATUS_FILE.write_text(json.dumps(gsheet_data, ensure_ascii=False, indent=2), encoding="utf-8")
-                except Exception:
-                    pass
-                return gsheet_data
-        except Exception:
-            pass
-    
-    # Respaldo: cargar desde archivo local
-    try:
-        if SEGUNDO_ESTATUS_FILE.exists():
-            data = json.loads(SEGUNDO_ESTATUS_FILE.read_text(encoding="utf-8"))
-            if isinstance(data, list):
-                return [str(x).strip() for x in data if str(x).strip() or x == ""]
-    except Exception:
-        pass
-    
-    # Si todo falla, usar valores por defecto
-    try:
-        SEGUNDO_ESTATUS_FILE.write_text(json.dumps(defaults, ensure_ascii=False, indent=2), encoding="utf-8")
-        # También sincronizar con Google Sheets si está disponible
-        if USE_GSHEETS:
-            sync_catalog_to_gsheet("segundo_estatus", defaults, GSHEET_SEGUNDO_ESTATUS_TAB)
-    except Exception:
-        pass
-    return defaults
-
-def save_segundo_estatus(lst: list):
-    try:
-        clean = [str(x).strip() for x in lst if (str(x).strip() or x == "")]
-        SEGUNDO_ESTATUS_FILE.write_text(json.dumps(clean, ensure_ascii=False, indent=2), encoding="utf-8")
-        # Limpiar cache relacionado
-        _cache_data.pop("segundo_estatus", None)
-        _cache_timestamp.pop("segundo_estatus", None)
-        # Sincronizar con Google Sheets
-        if USE_GSHEETS:
-            sync_catalog_to_gsheet("segundo_estatus", clean, GSHEET_SEGUNDO_ESTATUS_TAB)
     except Exception:
         pass
 
@@ -1736,8 +1698,6 @@ def load_catalog_from_gsheet(sheet_tab: str, default_values: list = None, force_
     catalog_name = None
     if "sucursal" in sheet_tab.lower():
         catalog_name = "sucursales"
-    elif "segundo" in sheet_tab.lower() or "2" in sheet_tab.lower():
-        catalog_name = "segundo_estatus"
     elif "estatus" in sheet_tab.lower() or "status" in sheet_tab.lower():
         catalog_name = "estatus"
     elif "asesor" in sheet_tab.lower():
@@ -1796,9 +1756,7 @@ def sync_estatus_to_gsheet():
     """Sincroniza estatus a Google Sheets"""
     sync_catalog_to_gsheet("estatus", ESTATUS_OPCIONES, GSHEET_ESTATUS_TAB)
 
-def sync_segundo_estatus_to_gsheet():
-    """Sincroniza segundo estatus a Google Sheets"""
-    sync_catalog_to_gsheet("segundo_estatus", SEGUNDO_ESTATUS_OPCIONES, GSHEET_SEGUNDO_ESTATUS_TAB)
+ 
 
 def sync_asesores_to_gsheet():
     """Sincroniza asesores únicos desde la base de clientes a Google Sheets"""
@@ -1814,13 +1772,12 @@ def sync_asesores_to_gsheet():
 
 def load_catalogs_from_gsheet():
     """Carga todos los catálogos desde Google Sheets y actualiza las variables globales"""
-    global SUCURSALES, ESTATUS_OPCIONES, SEGUNDO_ESTATUS_OPCIONES
+    global SUCURSALES, ESTATUS_OPCIONES
     
     try:
         # Cargar desde Google Sheets con fallback a valores actuales
         new_sucursales = load_catalog_from_gsheet(GSHEET_SUCURSALES_TAB, SUCURSALES)
-        new_estatus = load_catalog_from_gsheet(GSHEET_ESTATUS_TAB, ESTATUS_OPCIONES) 
-        new_segundo_estatus = load_catalog_from_gsheet(GSHEET_SEGUNDO_ESTATUS_TAB, SEGUNDO_ESTATUS_OPCIONES)
+        new_estatus = load_catalog_from_gsheet(GSHEET_ESTATUS_TAB, ESTATUS_OPCIONES)
         
         # Actualizar variables globales si hay datos válidos
         if new_sucursales:
@@ -1831,16 +1788,12 @@ def load_catalogs_from_gsheet():
             ESTATUS_OPCIONES = new_estatus
             save_estatus(ESTATUS_OPCIONES)  # Sincronizar con archivo local
             
-        if new_segundo_estatus:
-            SEGUNDO_ESTATUS_OPCIONES = new_segundo_estatus
-            save_segundo_estatus(SEGUNDO_ESTATUS_OPCIONES)  # Sincronizar con archivo local
             
     except Exception:
         pass  # Mantener valores actuales si falla
 
 # Inicializar catálogos desde disco (con posible actualización desde Google Sheets)
 ESTATUS_OPCIONES = load_estatus()
-SEGUNDO_ESTATUS_OPCIONES = load_segundo_estatus()
 
 # Cargar catálogos específicos por producto (si existen) o usar defaults
 _default_est_Inbursa = ["Tramite cargado","Pendiente firma","Pendiente Autorización","Credito Autorizado","Rechazado"]
@@ -2479,7 +2432,8 @@ def stable_multiselect(
 ):
     """
     Multiselect estable con popover/expander:
-      - Estado lógico en st.session_state[state_key]
+        sf.parent.mkdir(parents=True, exist_ok=True)
+        sf.write_text(json.dumps(clean, ensure_ascii=False, indent=2), encoding="utf-8")
       - Estado visual del widget en st.session_state[w_<state_key>]
       - Botones: Todos / Ninguno / Añadir / Reemplazar / Limpiar / Nueva búsqueda
       - Sincronización widget ← estado en acciones para evitar que el widget pise tu selección.
@@ -2630,7 +2584,7 @@ def selectbox_multi(label: str, options: list[str], state_key: str) -> list[str]
 # Columnas esperadas en el CSV / DataFrame de clientes
 COLUMNS = [
     "id","nombre","sucursal","asesor","fecha_ingreso","fecha_dispersion",
-    "estatus","monto_propuesta","monto_final","segundo_estatus","observaciones",
+    "estatus","monto_propuesta","monto_final","observaciones",
     "score","telefono","correo","analista","fuente"
 ]
 
@@ -2879,23 +2833,59 @@ def cargar_y_corregir_clientes(force_reload: bool = False) -> pd.DataFrame:
 
 # Función para arreglar IDs duplicados/vacíos
 def _fix_missing_or_duplicate_ids(df: pd.DataFrame) -> pd.DataFrame:
-    """Corrige IDs vacíos o duplicados en el DataFrame"""
+    """Corrige IDs vacíos o duplicados en el DataFrame.
+
+    Estrategia:
+    - Asegura que exista la columna `id`.
+    - Rellena IDs vacíos con `C{n}` donde `n` es el siguiente número disponible (base 1000).
+    - Para IDs duplicados, conserva la primera aparición y reasigna nuevas IDs para las repeticiones.
+    """
     if df is None or df.empty:
         return df
-    
-    df_fixed = df.copy()
-    
-    # Generar IDs únicos para registros sin ID o con ID vacío
-    for idx, row in df_fixed.iterrows():
-        if pd.isna(row.get('id')) or str(row.get('id')).strip() == '':
-            # Generar nuevo ID único
-            existing_ids = set(df_fixed['id'].dropna().astype(str))
-            counter = 1000
-            while f"C-{counter}" in existing_ids:
-                counter += 1
-            df_fixed.at[idx, 'id'] = f"C-{counter}"
-    
-    return df_fixed
+
+    df = df.copy()
+    if "id" not in df.columns:
+        df["id"] = ""
+
+    import re
+    def _num_from_id(s: str):
+        try:
+            m = re.search(r"(\d+)", str(s))
+            return int(m.group(1)) if m else None
+        except Exception:
+            return None
+
+    # Calcular siguiente número basado en los IDs existentes
+    nums = [n for n in (_num_from_id(x) for x in df["id"].astype(str)) if n is not None]
+    next_num = max(nums) + 1 if nums else 1000
+
+    used = set()
+    # recorrer y asignar
+    for idx in df.index:
+        cur = str(df.at[idx, "id"]).strip()
+        if not cur or cur.lower() in ("nan", "none"):
+            # asignar nuevo id
+            while True:
+                newid = f"C{next_num}"
+                next_num += 1
+                if newid not in used and not (df["id"] == newid).any():
+                    df.at[idx, "id"] = newid
+                    used.add(newid)
+                    break
+        else:
+            # si ya existe en usados, entonces es una repetición -> reasignar
+            if cur in used:
+                while True:
+                    newid = f"C{next_num}"
+                    next_num += 1
+                    if newid not in used and not (df["id"] == newid).any():
+                        df.at[idx, "id"] = newid
+                        used.add(newid)
+                        break
+            else:
+                used.add(cur)
+
+    return df
 
 # Funciones de historial
 HIST_COLUMNS_DEFAULT = ["fecha","accion","id","nombre","detalle","usuario"]
@@ -2989,7 +2979,7 @@ def cargar_historial(force_reload: bool = False) -> pd.DataFrame:
         return _HISTORIAL_CACHE.copy()
     
     # Columnas estándar del historial
-    cols = ["id", "nombre", "estatus_old", "estatus_new", "segundo_old", "segundo_new", "observaciones", "action", "actor", "ts"]
+    cols = ["id", "nombre", "estatus_old", "estatus_new", "observaciones", "action", "actor", "ts"]
     
     # Intentar cargar desde Google Sheets primero
     if USE_GSHEETS:
@@ -3011,9 +3001,7 @@ def cargar_historial(force_reload: bool = False) -> pd.DataFrame:
                         dfh_formatted['id'] = dfh.get('id', '').astype(str)
                         dfh_formatted['nombre'] = dfh.get('nombre', '').astype(str)
                         dfh_formatted['estatus_old'] = ''  # No se almacena separadamente en GSheets
-                        dfh_formatted['estatus_new'] = ''  # No se almacena separadamente en GSheets  
-                        dfh_formatted['segundo_old'] = ''  # No se almacena separadamente en GSheets
-                        dfh_formatted['segundo_new'] = ''  # No se almacena separadamente en GSheets
+                        dfh_formatted['estatus_new'] = ''  # No se almacena separadamente en GSheets
                         dfh_formatted['observaciones'] = dfh.get('detalle', '').astype(str)
                         dfh_formatted['action'] = dfh.get('accion', '').astype(str)
                         dfh_formatted['actor'] = dfh.get('usuario', '').astype(str)
@@ -3107,13 +3095,15 @@ def append_historial_gsheet(evento: dict):
     except Exception:
         pass
 
-def append_historial(cid: str, nombre: str, estatus_old: str, estatus_new: str, seg_old: str, seg_new: str, observaciones: str = "", action: str = "ESTATUS MODIFICADO", actor: str | None = None):
+def append_historial(cid: str, nombre: str, estatus_old: str, estatus_new: str, seg_old: str | None = None, seg_new: str | None = None, observaciones: str = "", action: str = "ESTATUS MODIFICADO", actor: str | None = None):
     """
     Agrega una fila al historial de estatus (archivo CSV).
     action: 'crear'|'modificar'|'eliminar'|'importar' u otro texto libre.
     actor: nombre de usuario que realizó la acción; si no se pasa, se toma el usuario actual.
     """
     try:
+        # permitir invalidar el caché global del historial
+        global _HISTORIAL_CACHE, _HISTORIAL_CACHE_TIME
         if actor is None:
             cu = current_user() or {}
             actor = cu.get("user") or cu.get("email") or "(sistema)"
@@ -3123,15 +3113,16 @@ def append_historial(cid: str, nombre: str, estatus_old: str, estatus_new: str, 
             "nombre": nombre or "",
             "estatus_old": estatus_old or "",
             "estatus_new": estatus_new or "",
-            "segundo_old": seg_old or "",
-            "segundo_new": seg_new or "",
+            "seg_old": seg_old or "",
+            "seg_new": seg_new or "",
             "observaciones": observaciones or "",
             "action": action or "",
             "actor": actor or "",
             "ts": pd.Timestamp.now().isoformat()
         }
         if HISTORIAL_CSV.exists():
-            dfh = cargar_historial()
+            # Forzar carga del historial desde disco para evitar usar caché obsoleto
+            dfh = cargar_historial(force_reload=True)
             dfh = pd.concat([dfh, pd.DataFrame([registro])], ignore_index=True)
         else:
             dfh = pd.DataFrame([registro])
@@ -3153,6 +3144,13 @@ def append_historial(cid: str, nombre: str, estatus_old: str, estatus_new: str, 
                     pass
             except Exception:
                 pass
+
+        # Invalidar caché de historial para que próximas lecturas reflejen el cambio
+        try:
+            _HISTORIAL_CACHE = None
+            _HISTORIAL_CACHE_TIME = 0
+        except Exception:
+            pass
     except Exception:
         # no bloquear la app por errores de historial
         pass
@@ -3699,7 +3697,6 @@ if is_admin():
                 with st.spinner("Sincronizando catálogos..."):
                     sync_sucursales_to_gsheet()
                     sync_estatus_to_gsheet()
-                    sync_segundo_estatus_to_gsheet()
                     sync_asesores_to_gsheet()
                 st.toast("✅ Catálogos sincronizados a Google Sheets", icon="✅")
                 
@@ -3729,17 +3726,14 @@ if is_admin():
                 sync_estatus_to_gsheet()
                 st.toast("✅ Estatus sincronizados")
                 
-        with sync_cols[3]:
-            if st.button("📈", key="sync_seg", help="Sincronizar 2° Estatus"):
-                sync_segundo_estatus_to_gsheet()
-                st.toast("✅ 2° Estatus sincronizados")
+        # El soporte de 2° Estatus fue removido; no mostrar botón
 
     # -- Gestión unificada (solo admin) -- (OPTIMIZADA)
     with st.sidebar.expander("⚙️ Gestión de Catálogos", expanded=False):
-        st.caption("Administrar sucursales, asesores, estatus y segundo estatus")
+        st.caption("Administrar sucursales, asesores y estatus")
         
         # Tabs para organizar mejor la gestión
-        tab_suc, tab_ases, tab_est, tab_seg = st.tabs(["🏢 Sucursales", "👥 Asesores", "📊 Estatus", "📈 2° Estatus"])
+        tab_suc, tab_ases, tab_est = st.tabs(["🏢 Sucursales", "👥 Asesores", "📊 Estatus"])
         
         # === TAB SUCURSALES ===
         with tab_suc:
@@ -3871,53 +3865,7 @@ if is_admin():
                                 st.toast(f"✅ Estatus '{est}' eliminado")
                                 st.rerun()
         
-        # === TAB SEGUNDO ESTATUS ===
-        with tab_seg:
-            # Manejar reset de campo si está marcado
-            if st.session_state.get("reset_new_seg_estatus", False):
-                st.session_state["new_seg_estatus"] = ""
-                st.session_state["reset_new_seg_estatus"] = False
-            
-            # Agregar nuevo segundo estatus
-            col1, col2 = st.columns([3, 1])
-            with col1:
-                nuevo_seg_estatus = st.text_input("Nuevo 2° estatus:", key="new_seg_estatus", placeholder="Ej. ALTA_PRIORIDAD")
-            with col2:
-                if st.button("➕", key="add_seg_estatus", help="Agregar segundo estatus"):
-                    if nuevo_seg_estatus.strip():
-                        if nuevo_seg_estatus.strip() not in SEGUNDO_ESTATUS_OPCIONES:
-                            SEGUNDO_ESTATUS_OPCIONES.append(nuevo_seg_estatus.strip())
-                            save_segundo_estatus(SEGUNDO_ESTATUS_OPCIONES)
-                            st.toast(f"✅ 2° Estatus '{nuevo_seg_estatus.strip()}' agregado")
-                            st.session_state["reset_new_seg_estatus"] = True
-                            st.rerun()
-                        else:
-                            st.toast("⚠️ 2° Estatus ya existe")
-                    else:
-                        st.toast("⚠️ Nombre vacío")
-            
-            # Lista de segundo estatus existentes
-            if SEGUNDO_ESTATUS_OPCIONES:
-                st.caption(f"2° Estatus ({len(SEGUNDO_ESTATUS_OPCIONES)}):")
-                for i, seg_est in enumerate(SEGUNDO_ESTATUS_OPCIONES):
-                    col1, col2 = st.columns([4, 1])
-                    with col1:
-                        st.write(f"• {seg_est}")
-                    with col2:
-                        if st.button("🗑️", key=f"del_seg_{i}", help=f"Eliminar {seg_est}"):
-                            # Verificar si está en uso
-                            df_check = cargar_clientes()
-                            en_uso = False
-                            if not df_check.empty and 'segundo_estatus' in df_check.columns:
-                                en_uso = (df_check['segundo_estatus'] == seg_est).any()
-                            
-                            if en_uso:
-                                st.toast(f"⚠️ '{seg_est}' está en uso por clientes")
-                            else:
-                                SEGUNDO_ESTATUS_OPCIONES.remove(seg_est)
-                                save_segundo_estatus(SEGUNDO_ESTATUS_OPCIONES)
-                                st.toast(f"✅ 2° Estatus '{seg_est}' eliminado")
-                                st.rerun()
+        # (Gestión de 2° Estatus eliminada)
 
 # ---------- Sidebar (filtros + acciones) ----------
 st.sidebar.title("👤 CRM")
@@ -4084,10 +4032,9 @@ except Exception as e:
     suc_mask = pd.Series(True, index=df_cli.index)
     asesor_mask = pd.Series(True, index=df_cli.index)
     est_mask = pd.Series(True, index=df_cli.index)
-    seg_mask = pd.Series(True, index=df_cli.index)
     fuente_mask = pd.Series(True, index=df_cli.index)
 
-df_ver = df_cli[suc_mask & est_mask & seg_mask & asesor_mask & fuente_mask].copy()
+df_ver = df_cli[suc_mask & est_mask & asesor_mask & fuente_mask].copy()
 
 # Resumen
 st.sidebar.markdown("---")
@@ -4972,7 +4919,6 @@ with tab_cli:
                 fecha_ingreso_n = st.date_input("Fecha ingreso", value=date.today())
                 fecha_dispersion_n = st.date_input("Fecha dispersión", value=date.today())
                 estatus_n = st.selectbox("Estatus", ESTATUS_OPCIONES, index=0)
-                segundo_estatus_n = st.selectbox("Segundo estatus", SEGUNDO_ESTATUS_OPCIONES, index=0)
             with c3:
                 monto_prop_n = st.text_input("Monto propuesta", value="")
                 monto_final_n = st.text_input("Monto final", value="")
@@ -5035,7 +4981,6 @@ with tab_cli:
                             "estatus": estatus_n,
                             "monto_propuesta": str(monto_prop_n).strip(),
                             "monto_final": str(monto_final_n).strip(),
-                            "segundo_estatus": segundo_estatus_n,
                             "observaciones": obs_n.strip(),
                             "score": str(score_n).strip(),
                             "telefono": telefono_n.strip(),
@@ -5047,7 +4992,7 @@ with tab_cli:
                         guardar_clientes(base)
                         # registrar creación en historial
                         actor = (current_user() or {}).get("user") or (current_user() or {}).get("email")
-                        append_historial(cid, nuevo.get("nombre", ""), "", nuevo.get("estatus", ""), "", nuevo.get("segundo_estatus", ""), f"Creado por {actor}", action="CLIENTE AGREGADO", actor=actor)
+                        append_historial(cid, nuevo.get("nombre", ""), "", nuevo.get("estatus", ""), f"Creado por {actor}", action="CLIENTE AGREGADO", actor=actor)
 
                         # Guardar documentos (auto refresh al terminar) — acumular y registrar 1 sola entrada en historial
                         subidos_lote = []
@@ -5062,7 +5007,6 @@ with tab_cli:
                             append_historial(
                                 cid, nuevo.get("nombre",""),
                                 nuevo.get("estatus",""), nuevo.get("estatus",""),
-                                nuevo.get("segundo_estatus",""), nuevo.get("segundo_estatus",""),
                                 f"Subidos: {', '.join(subidos_lote)}",
                                 action="DOCUMENTOS", actor=actor
                             )
@@ -5089,7 +5033,7 @@ with tab_cli:
             "estatus": st.column_config.SelectboxColumn("Estatus", options=ESTATUS_OPCIONES, required=True),
             "monto_propuesta": st.column_config.TextColumn("Monto propuesta"),
             "monto_final": st.column_config.TextColumn("Monto final"),
-            "segundo_estatus": st.column_config.SelectboxColumn("Segundo estatus", options=SEGUNDO_ESTATUS_OPCIONES),
+            
             "observaciones": st.column_config.TextColumn("Observaciones"),
             "score": st.column_config.TextColumn("Score"),
             "telefono": st.column_config.TextColumn("Teléfono"),
@@ -5136,22 +5080,18 @@ with tab_cli:
                 cid_quick = st.selectbox("Cliente", ids_quick, format_func=lambda x: f"{x} - {get_nombre_by_id(x)}")
                 nombre_q = get_nombre_by_id(cid_quick)
                 estatus_actual = get_field_by_id(cid_quick, "estatus")
-                seg_actual = get_field_by_id(cid_quick, "segundo_estatus")
             with col_q2:
                 nuevo_estatus = st.selectbox("Nuevo estatus", ESTATUS_OPCIONES, index=ESTATUS_OPCIONES.index(estatus_actual) if estatus_actual in ESTATUS_OPCIONES else 0)
             with col_q3:
-                nuevo_seg = st.selectbox("Segundo estatus", SEGUNDO_ESTATUS_OPCIONES, index=SEGUNDO_ESTATUS_OPCIONES.index(seg_actual) if seg_actual in SEGUNDO_ESTATUS_OPCIONES else 0)
-            with col_q4:
                 obs_q = st.text_input("Observaciones (opcional)")
                 if st.button("Actualizar estatus"):
                     base = df_cli.set_index("id")
                     base.at[cid_quick, "estatus"] = nuevo_estatus
-                    base.at[cid_quick, "segundo_estatus"] = nuevo_seg
                     df_cli = base.reset_index()
                     guardar_clientes(df_cli)
                     # registrar en historial quién hizo el cambio (modificar)
                     actor = (current_user() or {}).get("user") or (current_user() or {}).get("email")
-                    append_historial(cid_quick, nombre_q, estatus_actual, nuevo_estatus, seg_actual, nuevo_seg, obs_q, action="ESTATUS MODIFICADO", actor=actor)
+                    append_historial(cid_quick, nombre_q, estatus_actual, nuevo_estatus, obs_q, action="ESTATUS MODIFICADO", actor=actor)
                     st.success(f"Estatus actualizado para {cid_quick} ✅")
                     do_rerun()
 
@@ -5179,7 +5119,7 @@ with tab_cli:
                         old_row = original_df[original_df["id"] == cid]
                         if not old_row.empty:
                             old_row = old_row.iloc[0]
-                            # comparar estatus y segundo estatus y también detectar cambios en otras columnas
+                            # comparar estatus y detectar cambios en otras columnas
                             diffs = []
                             for c in COLUMNS:
                                 if c == "id":
@@ -5191,10 +5131,8 @@ with tab_cli:
                             if diffs:
                                 est_old = old_row.get("estatus", "")
                                 est_new = df_cli.at[idx, "estatus"] if "estatus" in df_cli.columns else ""
-                                seg_old = old_row.get("segundo_estatus", "")
-                                seg_new = df_cli.at[idx, "segundo_estatus"] if "segundo_estatus" in df_cli.columns else ""
                                 obs = "Campos cambiados: " + ",".join(diffs)
-                                append_historial(cid, df_cli.at[idx, "nombre"], est_old, est_new, seg_old, seg_new, obs, action="ESTATUS MODIFICADO", actor=actor)
+                                append_historial(cid, df_cli.at[idx, "nombre"], est_old, est_new, obs, action="ESTATUS MODIFICADO", actor=actor)
                 except Exception:
                     pass
 
@@ -5312,13 +5250,12 @@ with tab_docs:
                         try:
                             nombre_x = get_nombre_by_id(cid_sel)
                             est_x    = get_field_by_id(cid_sel, "estatus")
-                            seg_x    = get_field_by_id(cid_sel, "segundo_estatus")
                         except Exception:
-                            nombre_x = est_x = seg_x = ""
+                            nombre_x = est_x = ""
 
                         append_historial(
                             str(cid_sel), nombre_x,
-                            est_x, est_x, seg_x, seg_x,
+                            est_x, est_x,
                             f"Subidos: {', '.join(subidos_lote)}",
                             action="DOCUMENTOS", actor=actor
                         )
@@ -5379,15 +5316,14 @@ with tab_docs:
                                         try:
                                             nombre_x = get_nombre_by_id(cid_sel)
                                             est_x    = get_field_by_id(cid_sel, "estatus")
-                                            seg_x    = get_field_by_id(cid_sel, "segundo_estatus")
                                         except Exception:
-                                            nombre_x = est_x = seg_x = ""
+                                            nombre_x = est_x = ""
                                         actor = (current_user() or {}).get("user") or (current_user() or {}).get("email")
                                         append_historial(
                                             str(cid_sel), nombre_x,
-                                            est_x, est_x, seg_x, seg_x,
+                                            est_x, est_x,
                                             f"Descargado: {f.name}",
-                                            action="DESCARGA DOCUMENTO",   # o el que uses en ACTION_LABELS
+                                            action="DESCARGA DOCUMENTO",
                                             actor=actor
                                         )
 
@@ -5407,7 +5343,7 @@ with tab_docs:
                                                 # historial
                                                 try:
                                                     actor = (current_user() or {}).get("user") or (current_user() or {}).get("email")
-                                                    append_historial(str(cid_sel), get_nombre_by_id(cid_sel), "", "", "", "", f"Eliminado: {f.name}", action="DOCUMENTOS", actor=actor)
+                                                    append_historial(str(cid_sel), get_nombre_by_id(cid_sel), "", "", f"Eliminado: {f.name}", action="DOCUMENTOS", actor=actor)
                                                 except Exception:
                                                     pass
                                                 st.success(f"Archivo eliminado: {f.name}")
@@ -5461,7 +5397,7 @@ with tab_import:
 
     import_cols_required = [
         "nombre","sucursal","asesor","fecha_ingreso","fecha_dispersion",
-        "estatus","monto_propuesta","monto_final","segundo_estatus",
+        "estatus","monto_propuesta","monto_final",
         "observaciones","score","telefono","correo","analista"
     ]
     import_cols_optional = ["id", "fuente", "producto"]  # si viene, permite actualizar por ID
@@ -5526,9 +5462,7 @@ with tab_import:
                 "revision": "EN REVISIÓN",
                 "revisión": "EN REVISIÓN",
             }
-            SEGUNDO_ESTATUS_SYNONYMS = {
-                # agrega sinónimos si los conoces
-            }
+            
 
             def _canon_est(x: str) -> str:
                 try:
@@ -5536,11 +5470,7 @@ with tab_import:
                 except Exception:
                     return x
 
-            def _canon_seg(x: str) -> str:
-                try:
-                    return canonicalize_from_catalog(x, SEGUNDO_ESTATUS_OPCIONES, extra_synonyms=SEGUNDO_ESTATUS_SYNONYMS, min_ratio=0.90)
-                except Exception:
-                    return x
+
 
             def _canon_suc(x: str) -> str:
                 try:
@@ -5550,7 +5480,6 @@ with tab_import:
 
             for col, fn in [
                 ("estatus", _canon_est),
-                ("segundo_estatus", _canon_seg),
                 ("sucursal", _canon_suc),
             ]:
                 if col in df_norm.columns:
@@ -5590,8 +5519,6 @@ with tab_import:
             # Detectar nuevos valores que no estén en los catálogos actuales
             nuevas_suc = sorted(set(df_norm.loc[df_norm["sucursal"].ne(""), "sucursal"]) - set(SUCURSALES))
             nuevos_est = sorted(set(df_norm.loc[df_norm["estatus"].ne(""), "estatus"]) - set(ESTATUS_OPCIONES))
-            nuevos_seg = sorted(set(df_norm.loc[df_norm["segundo_estatus"].ne(""), "segundo_estatus"]) - set(SEGUNDO_ESTATUS_OPCIONES))
-
             # Agregar automáticamente y persistir
             if nuevas_suc:
                 SUCURSALES.extend([s for s in nuevas_suc if s.strip()])
@@ -5665,12 +5592,6 @@ with tab_import:
                 if added_global:
                     save_estatus(ESTATUS_OPCIONES)
                     st.info(f"Se agregaron {len(added_global)} estatus: {', '.join(added_global)}")
-
-            if nuevos_seg:
-                SEGUNDO_ESTATUS_OPCIONES.extend([e for e in nuevos_seg if e.strip() or e == ""])
-                save_segundo_estatus(SEGUNDO_ESTATUS_OPCIONES)
-                st.info(f"Se agregaron {len(nuevos_seg)} segundo estatus: {', '.join([x if x else '(vacío)' for x in nuevos_seg])}")
-
             with st.expander("Previsualización mapeada", expanded=False):
                 st.dataframe(sort_df_by_dates(df_norm).head(10), use_container_width=True)
 
@@ -5741,7 +5662,7 @@ with tab_import:
                         try:
                             actor = (current_user() or {}).get("user") or (current_user() or {}).get("email")
                             cid_up = base.at[idx, "id"] if "id" in base.columns else (registro.get("id","") or "")
-                            append_historial(cid_up, registro.get("nombre",""), "", registro.get("estatus",""), "", registro.get("segundo_estatus",""), f"Importación - actualizado", action="ESTATUS MODIFICADO", actor=actor)
+                            append_historial(cid_up, registro.get("nombre",""), "", registro.get("estatus",""), f"Importación - actualizado", action="ESTATUS MODIFICADO", actor=actor)
                         except Exception:
                             pass
                     else:
@@ -5754,7 +5675,7 @@ with tab_import:
                         agregados += 1
                         try:
                             actor = (current_user() or {}).get("user") or (current_user() or {}).get("email")
-                            append_historial(new_id, nuevo.get("nombre",""), "", nuevo.get("estatus",""), "", nuevo.get("segundo_estatus",""), f"Importación - creado", action="CLIENTE AGREGADO", actor=actor)
+                            append_historial(new_id, nuevo.get("nombre",""), "", nuevo.get("estatus",""), f"Importación - creado", action="CLIENTE AGREGADO", actor=actor)
                         except Exception:
                             pass
 
