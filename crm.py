@@ -1323,6 +1323,11 @@ _CATALOGS_CACHE = {
     "estatusmejoravit": None,
     "asesores": None
 }
+
+# Archivos locales para catálogos de estatus por producto
+ESTATUSINBURSA_FILE = DATA_DIR / "estatusinbursa.json"
+ESTATUSMULTIVA_FILE = DATA_DIR / "estatusmultiva.json"
+ESTATUSMEJORAVIT_FILE = DATA_DIR / "estatusmejoravit.json"
 _CATALOGS_CACHE_TIME = {
     "sucursales": 0,
     "estatus": 0,
@@ -1657,6 +1662,42 @@ def save_segundo_estatus(lst: list):
     except Exception:
         pass
 
+
+def _load_estatus_specific(sheet_tab: str, file_path: Path, defaults: list) -> list:
+    """
+    Carga una lista de estatus específica para un producto desde Google Sheets o archivo local.
+    """
+    # Intentar cargar desde Google Sheets primero
+    if USE_GSHEETS:
+        try:
+            gsheet_data = load_catalog_from_gsheet(sheet_tab, defaults)
+            if gsheet_data:
+                try:
+                    file_path.write_text(json.dumps(gsheet_data, ensure_ascii=False, indent=2), encoding="utf-8")
+                except Exception:
+                    pass
+                return gsheet_data
+        except Exception:
+            pass
+
+    # Respaldo: cargar desde archivo local
+    try:
+        if file_path.exists():
+            data = json.loads(file_path.read_text(encoding="utf-8"))
+            if isinstance(data, list):
+                return [str(x).strip() for x in data if str(x).strip()]
+    except Exception:
+        pass
+
+    # Si todo falla, escribir defaults y devolverlos
+    try:
+        file_path.write_text(json.dumps(defaults, ensure_ascii=False, indent=2), encoding="utf-8")
+        if USE_GSHEETS:
+            sync_catalog_to_gsheet(sheet_tab, defaults, sheet_tab)
+    except Exception:
+        pass
+    return defaults
+
 # === FUNCIONES DE SINCRONIZACIÓN CON GOOGLE SHEETS ===
 
 def sync_catalog_to_gsheet(catalog_name: str, catalog_data: list, sheet_tab: str):
@@ -1800,6 +1841,14 @@ def load_catalogs_from_gsheet():
 # Inicializar catálogos desde disco (con posible actualización desde Google Sheets)
 ESTATUS_OPCIONES = load_estatus()
 SEGUNDO_ESTATUS_OPCIONES = load_segundo_estatus()
+
+# Cargar catálogos específicos por producto (si existen) o usar defaults
+_default_est_Inbursa = ["Tramite cargado","Pendiente firma","Pendiente Autorización","Credito Autorizado","Rechazado"]
+_default_est_Multiva = ["Tramite enviado","Pendiente solicitud","Pendiente contrato","Ganada","Rechazada"]
+_default_est_Mejoravit = ["Enviado", "Pendiente Acuse", "Pendiente Autorización", " Pendiente Firma", "Pendiente Dispersión","Credito Autorizado", "Rechazado", "En pausa por algun tramite"]
+ESTATUS_INBURSA_OPCIONES = _load_estatus_specific(GSHEET_ESTATUSINBURSA_TAB, ESTATUSINBURSA_FILE, _default_est_Inbursa)
+ESTATUS_MULTIVA_OPCIONES = _load_estatus_specific(GSHEET_ESTATUSMULTIVA_TAB, ESTATUSMULTIVA_FILE, _default_est_Multiva)
+ESTATUS_MEJORAVIT_OPCIONES = _load_estatus_specific(GSHEET_ESTATUSMEJORAVIT_TAB, ESTATUSMEJORAVIT_FILE, _default_est_Mejoravit)
 
 # Inicializar sucursales (fallback a load_sucursales)
 SUCURSALES = load_sucursales()
@@ -3901,7 +3950,8 @@ ASES_ALL = sorted(list(dict.fromkeys([_norm_sin_asesor_label(x) for x in asesor_
 # IMPORTANTE: Aplicar la misma normalización a asesor_for_filter para que coincida con ASES_ALL
 asesor_for_filter_normalized = asesor_for_filter.apply(_norm_sin_asesor_label)
 
-EST_ALL = ESTATUS_OPCIONES.copy()
+# Construir la lista de estatus que aparece en el filtro: unir global + product-specific
+EST_ALL = sorted(list(dict.fromkeys(ESTATUS_OPCIONES + ESTATUS_INBURSA_OPCIONES + ESTATUS_MULTIVA_OPCIONES + ESTATUS_MEJORAVIT_OPCIONES)))
 
 # --- NEW: Fuentes para filtro (se generan dinámicamente desde la base para que nuevas fuentes aparezcan automáticamente)
 fuente_for_filter = df_cli["fuente"].fillna("").replace({"": "(Sin fuente)"})
@@ -4036,7 +4086,7 @@ except Exception as e:
     est_mask = pd.Series(True, index=df_cli.index)
     fuente_mask = pd.Series(True, index=df_cli.index)
 
-df_ver = df_cli[suc_mask & est_mask & asesor_mask & fuente_mask].copy()
+df_ver = df_cli[suc_mask & est_mask & seg_mask & asesor_mask & fuente_mask].copy()
 
 # Resumen
 st.sidebar.markdown("---")
@@ -5514,11 +5564,11 @@ with tab_import:
                 p = (prod or "").strip().lower()
                 try:
                     if "inbursa" in p:
-                        return load_catalog_from_gsheet(GSHEET_ESTATUSINBURSA_TAB, ESTATUS_OPCIONES)
+                        return ESTATUS_INBURSA_OPCIONES
                     if "multiva" in p:
-                        return load_catalog_from_gsheet(GSHEET_ESTATUSMULTIVA_TAB, ESTATUS_OPCIONES)
+                        return ESTATUS_MULTIVA_OPCIONES
                     if "mejoravit" in p or "mejora" in p:
-                        return load_catalog_from_gsheet(GSHEET_ESTATUSMEJORAVIT_TAB, ESTATUS_OPCIONES)
+                        return ESTATUS_MEJORAVIT_OPCIONES
                 except Exception:
                     pass
                 return ESTATUS_OPCIONES
@@ -5556,16 +5606,17 @@ with tab_import:
                         continue
 
                     # Si ya existe en algún catálogo por producto, saltar
+                    # Preferir catálogos cargados en memoria antes que hacer llamadas a Google Sheets
                     try:
-                        in_inb = ne_strip in load_catalog_from_gsheet(GSHEET_ESTATUSINBURSA_TAB, [])
+                        in_inb = ne_strip in ESTATUS_INBURSA_OPCIONES
                     except Exception:
                         in_inb = False
                     try:
-                        in_mul = ne_strip in load_catalog_from_gsheet(GSHEET_ESTATUSMULTIVA_TAB, [])
+                        in_mul = ne_strip in ESTATUS_MULTIVA_OPCIONES
                     except Exception:
                         in_mul = False
                     try:
-                        in_mej = ne_strip in load_catalog_from_gsheet(GSHEET_ESTATUSMEJORAVIT_TAB, [])
+                        in_mej = ne_strip in ESTATUS_MEJORAVIT_OPCIONES
                     except Exception:
                         in_mej = False
 
@@ -5593,6 +5644,16 @@ with tab_import:
                             if ne_strip not in existing:
                                 existing.append(ne_strip)
                                 sync_catalog_to_gsheet("estatus", existing, target_tab)
+                                # Actualizar el catálogo en memoria correspondiente
+                                try:
+                                    if target_tab == GSHEET_ESTATUSINBURSA_TAB:
+                                        ESTATUS_INBURSA_OPCIONES.append(ne_strip)
+                                    elif target_tab == GSHEET_ESTATUSMULTIVA_TAB:
+                                        ESTATUS_MULTIVA_OPCIONES.append(ne_strip)
+                                    elif target_tab == GSHEET_ESTATUSMEJORAVIT_TAB:
+                                        ESTATUS_MEJORAVIT_OPCIONES.append(ne_strip)
+                                except Exception:
+                                    pass
                         except Exception:
                             pass
 
