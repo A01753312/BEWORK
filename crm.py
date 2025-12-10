@@ -4084,6 +4084,7 @@ except Exception as e:
     suc_mask = pd.Series(True, index=df_cli.index)
     asesor_mask = pd.Series(True, index=df_cli.index)
     est_mask = pd.Series(True, index=df_cli.index)
+    seg_mask = pd.Series(True, index=df_cli.index)
     fuente_mask = pd.Series(True, index=df_cli.index)
 
 df_ver = df_cli[suc_mask & est_mask & seg_mask & asesor_mask & fuente_mask].copy()
