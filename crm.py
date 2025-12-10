@@ -238,26 +238,26 @@ st.markdown("""
         background-color: #F7FAFC;
     }
     
-    /* Botones corporativos Kapitaliza con tema claro */
+    /* Botones corporativos BEWORK: azul claro (en lugar de azul marino) */
     .stButton > button {
         border-radius: 8px;
         font-weight: 600;
         font-size: 14px;
         transition: all 0.3s ease;
-        background-color: #0A3D62;
-        color: #2D3748;
+        background-color: #4DA8FF; /* azul claro */
+        color: #FFFFFF;
         border: none;
         padding: 12px 24px;
         text-transform: uppercase;
         letter-spacing: 0.5px;
-        box-shadow: 0 2px 8px rgba(255, 212, 29, 0.3);
+        box-shadow: 0 2px 8px rgba(77, 168, 255, 0.28);
     }
-    
+
     .stButton > button:hover {
         transform: translateY(-2px);
-        box-shadow: 0 4px 12px rgba(255, 212, 29, 0.5);
-        background-color: #E6B800;
-        color: #1A202C;
+        box-shadow: 0 4px 12px rgba(77, 168, 255, 0.45);
+        background-color: #3A9BE6; /* hover: azul más oscuro */
+        color: #FFFFFF;
     }
     
     /* Sidebar corporativo con tema claro */
