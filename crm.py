@@ -19,6 +19,10 @@ st.set_page_config(
     }
 )
 
+# Inicializar claves en session_state para evitar AttributeError
+if "drive_creds" not in st.session_state:
+    st.session_state["drive_creds"] = None
+
 # === AUTENTICACIÓN CON GOOGLE DRIVE ===
 from google_auth_oauthlib.flow import Flow
 from googleapiclient.discovery import build
