@@ -1807,6 +1807,9 @@ def load_catalogs_from_gsheet():
 ESTATUS_OPCIONES = load_estatus()
 SEGUNDO_ESTATUS_OPCIONES = load_segundo_estatus()
 
+# Inicializar sucursales (fallback a load_sucursales)
+SUCURSALES = load_sucursales()
+
 DOC_CATEGORIAS = {
     "estado_cuenta": ["pdf", "jpg", "jpeg", "png"],
     "buro_credito":  ["pdf", "jpg", "jpeg", "png"],
