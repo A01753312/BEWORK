@@ -135,7 +135,7 @@ st.markdown("""
     /* Estilo del header */
     .stApp header {
         background-color: #FFFFFF;
-        border-bottom: 2px solid #FFD41D;
+        border-bottom: 2px solid #0A3D62;
         box-shadow: 0 1px 3px rgba(0,0,0,0.1);
     }
     
@@ -161,17 +161,17 @@ st.markdown("""
     }
     
     .stTabs [aria-selected="true"] {
-        background-color: #FFD41D;
+        background-color: #0A3D62;
         color: #2D3748;
-        border-color: #FFD41D;
-        box-shadow: 0 2px 8px rgba(255, 212, 29, 0.3);
+        border-color: #0A3D62;
+        box-shadow: 0 2px 8px rgba(10, 61, 98, 0.3);
         font-weight: 700;
     }
     
     .stTabs [data-baseweb="tab"]:hover {
         background-color: #EDF2F7;
         color: #2D3748;
-        border-color: #FFD41D;
+        border-color: #0A3D62;
         box-shadow: 0 1px 3px rgba(0,0,0,0.1);
     }
     
@@ -209,7 +209,7 @@ st.markdown("""
     div[data-testid="metric-container"]:hover {
         transform: translateY(-2px);
         box-shadow: 0 8px 25px rgba(0, 0, 0, 0.12);
-        border-color: #FFD41D;
+        border-color: #0A3D62;
     }
     
     /* Dataframes corporativos con tema claro */
@@ -244,7 +244,7 @@ st.markdown("""
         font-weight: 600;
         font-size: 14px;
         transition: all 0.3s ease;
-        background-color: #FFD41D;
+        background-color: #0A3D62;
         color: #2D3748;
         border: none;
         padding: 12px 24px;
@@ -263,7 +263,7 @@ st.markdown("""
     /* Sidebar corporativo con tema claro */
     [data-testid="stSidebar"] {
         background-color: #FFFFFF;
-        border-right: 2px solid #FFD41D;
+        border-right: 2px solid #0A3D62;
         box-shadow: 2px 0 4px rgba(0,0,0,0.05);
     }
     
@@ -300,14 +300,14 @@ st.markdown("""
     
     .stTextInput > div > div > input:focus,
     .stSelectbox > div > div > select:focus {
-        border-color: #FFD41D;
+        border-color: #0A3D62;
         box-shadow: 0 0 0 2px rgba(255, 212, 29, 0.2);
         background-color: #FFFBF0;
     }
     
     /* Spinner corporativo */
     .stSpinner > div {
-        border-top-color: #FFD41D !important;
+        border-top-color: #0A3D62 !important;
     }
     
     /* Títulos y encabezados con tema claro */
