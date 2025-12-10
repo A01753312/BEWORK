@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Test simplificado para el sistema CRM - Clientes KAPITALIZA
+Test simplificado para el sistema CRM - Clientes BEWORK
 Este archivo prueba las funciones principales del sistema CRM
 sin depender del contexto de Streamlit.
 
@@ -334,7 +334,7 @@ def test_configuracion_catalogos():
     try:
         # Test sucursales
         sucursales_file = Path(temp_dir) / "sucursales.json"
-        sucursales_test = ["TOXQUI", "COLOKTE", "KAPITALIZA", "NUEVA_SUCURSAL"]
+        sucursales_test = ["TOXQUI", "COLOKTE", "BEWORK", "NUEVA_SUCURSAL"]
         
         # Guardar sucursales
         sucursales_file.write_text(json.dumps(sucursales_test, ensure_ascii=False, indent=2), encoding="utf-8")

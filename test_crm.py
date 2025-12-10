@@ -112,7 +112,7 @@ class TestSyncEditorToDataframe:
         df_editor = pd.DataFrame([{
             "id": "C1000",
             "nombre": "Juan Pérez MODIFICADO",
-            "sucursal": "KAPITALIZA",  # ← cambio
+                "sucursal": "BEWORK",  # ← cambio
             "asesor": "Carlos",
             "fecha_ingreso": "2024-01-01",
             "fecha_dispersion": "2024-01-20",  # ← cambio
@@ -133,7 +133,7 @@ class TestSyncEditorToDataframe:
         # Verificaciones
         assert len(resultado) == 1, "Debe seguir teniendo 1 fila"
         assert resultado.iloc[0]["nombre"] == "Juan Pérez MODIFICADO", "Nombre debe actualizarse"
-        assert resultado.iloc[0]["sucursal"] == "KAPITALIZA", "Sucursal debe cambiar a KAPITALIZA"
+        assert resultado.iloc[0]["sucursal"] == "BEWORK", "Sucursal debe cambiar a BEWORK"
         assert resultado.iloc[0]["estatus"] == "EN ONBOARDING", "Estatus debe cambiar"
         assert resultado.iloc[0]["fecha_dispersion"] == "2024-01-20", "Fecha debe cambiar"
     
@@ -611,9 +611,9 @@ class TestUpdateConfigList:
     def test_agregar_item_nuevo(self):
         """Verifica que se agregue un item nuevo"""
         sucursales = ["TOXQUI", "COLOKTE"]
-        sucursales = update_config_list(sucursales, "KAPITALIZA")
-        
-        assert "KAPITALIZA" in sucursales, "KAPITALIZA debe agregarse"
+        sucursales = update_config_list(sucursales, "BEWORK")
+
+        assert "BEWORK" in sucursales, "BEWORK debe agregarse"
         assert len(sucursales) == 3
     
     def test_evitar_duplicados(self):
@@ -643,9 +643,9 @@ class TestUpdateConfigList:
     def test_lista_ordenada(self):
         """Verifica que la lista quede ordenada"""
         sucursales = ["COLOKTE", "TOXQUI"]
-        sucursales = update_config_list(sucursales, "KAPITALIZA")
-        
-        assert sucursales == ["COLOKTE", "KAPITALIZA", "TOXQUI"], "Lista debe estar ordenada"
+        sucursales = update_config_list(sucursales, "BEWORK")
+
+        assert sucursales == ["COLOKTE", "BEWORK", "TOXQUI"], "Lista debe estar ordenada"
 
 
 # ===== TEST 8: Backup cleanup =====

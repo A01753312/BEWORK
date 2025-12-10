@@ -65,7 +65,7 @@ venv.bak/
 service_account.json
 *.service_account.json
 *.key.json
-crmkapitaliza-*.json
+crmBEWORK-*.json
 
 # Data directory (if you keep large or sensitive files here)
 /data/*.json

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Test completo para el sistema CRM - Clientes KAPITALIZA
+Test completo para el sistema CRM - Clientes BEWORK
 Este archivo prueba todas las funciones principales del sistema CRM
 para asegurar que todo está funcionando correctamente.
 
@@ -166,7 +166,7 @@ class TestCRMCompleto(unittest.TestCase):
         df_problematico = pd.DataFrame([
             {"id": "", "nombre": "Sin ID 1", "sucursal": "TOXQUI", "asesor": "Test"},
             {"id": "C1000", "nombre": "ID Duplicado 1", "sucursal": "COLOKTE", "asesor": "Test"},
-            {"id": "C1000", "nombre": "ID Duplicado 2", "sucursal": "KAPITALIZA", "asesor": "Test"},
+            {"id": "C1000", "nombre": "ID Duplicado 2", "sucursal": "BEWORK", "asesor": "Test"},
             {"id": "", "nombre": "Sin ID 2", "sucursal": "TOXQUI", "asesor": "Test"}
         ])
         
@@ -320,7 +320,7 @@ class TestCRMCompleto(unittest.TestCase):
         print("\n⚙️ Test 7: Catálogos y configuración")
         
         # Test load_sucursales y save_sucursales
-        sucursales_test = ["TOXQUI", "COLOKTE", "KAPITALIZA", "NUEVA_SUCURSAL"]
+        sucursales_test = ["TOXQUI", "COLOKTE", "BEWORK", "NUEVA_SUCURSAL"]
         save_sucursales(sucursales_test)
         sucursales_cargadas = load_sucursales()
         self.assertEqual(len(sucursales_cargadas), 4)

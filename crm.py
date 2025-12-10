@@ -124,14 +124,14 @@ if "error" in query_params:
     # Quitar mensaje molesto: st.sidebar.error(f"❌ Error de autorización: {error}")
     st.query_params.clear()
 
-# CSS personalizado para look profesional con tema claro Kapitaliza
+# CSS personalizado para look profesional con tema claro BEWORK
 st.markdown("""
 <style>
     /* Ocultar el menú de Streamlit y el footer */
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
     
-    /* Tema claro corporativo Kapitaliza */
+    /* Tema claro corporativo BEWORK */
     .stApp {
         background-color: #FAFBFC;
         color: #2D3748;
@@ -781,7 +781,7 @@ def generar_presentacion_dashboard(df_cli: pd.DataFrame) -> bytes:
     # Título
     title_box = slide.shapes.add_textbox(Inches(1), Inches(2.5), Inches(8), Inches(1.5))
     title_frame = title_box.text_frame
-    title_frame.text = "Dashboard CRM Kapitaliza"
+    title_frame.text = "Dashboard CRM BEWORK"
     title_p = title_frame.paragraphs[0]
     title_p.font.size = Pt(54)
     title_p.font.bold = True
@@ -1224,7 +1224,7 @@ def render_professional_header():
                     font-weight: 700; 
                     margin: 0;
                     text-shadow: 0 2px 4px rgba(0,0,0,0.1);
-                ">💼 KAPITALIZA</h1>
+                ">💼 BEWORK</h1>
             </div>
             """, unsafe_allow_html=True)
             
@@ -1988,14 +1988,14 @@ def crear_carpeta_cliente_drive(cliente_id, cliente_nombre=""):
     
     drive_service = build("drive", "v3", credentials=st.session_state.drive_creds)
     
-    # Buscar carpeta principal "CRM Kapitaliza"
-    query = "name='CRM Kapitaliza' and mimeType='application/vnd.google-apps.folder' and trashed=false"
+    # Buscar carpeta principal "CRM BEWORK"
+    query = "name='CRM BEWORK' and mimeType='application/vnd.google-apps.folder' and trashed=false"
     results = drive_service.files().list(q=query, fields="files(id, name)").execute()
     
     if not results.get('files'):
         # Crear carpeta principal
         folder_metadata = {
-            'name': 'CRM Kapitaliza',
+            'name': 'CRM BEWORK',
             'mimeType': 'application/vnd.google-apps.folder'
         }
         main_folder = drive_service.files().create(body=folder_metadata, fields='id').execute()
@@ -4183,7 +4183,7 @@ with tab_dash:
             st.download_button(
                 label="📊 Descargar",
                 data=pptx_data,
-                file_name=f"dashboard_kapitaliza_{datetime.now().strftime('%Y%m%d_%H%M')}.pptx",
+                file_name=f"dashboard_BEWORK_{datetime.now().strftime('%Y%m%d_%H%M')}.pptx",
                 mime="application/vnd.openxmlformats-officedocument.presentationml.presentation",
                 help="Descargar presentación completa con gráficas"
             )
@@ -4712,9 +4712,9 @@ with tab_dash:
                         
                         st.altair_chart(chart_fuente, use_container_width=True)
 
-        # 💰 ANÁLISIS FINANCIERO AVANZADO - CARTERA KAPITALIZA
+        # 💰 ANÁLISIS FINANCIERO AVANZADO - CARTERA BEWORK
         st.markdown("---")
-        st.subheader(" Análisis Financiero — Cartera Kapitaliza")
+        st.subheader(" Análisis Financiero — Cartera BEWORK")
         
         # Preparar datos con limpieza
         df_temp = df_cli.copy()
@@ -4884,7 +4884,7 @@ with tab_dash:
                 pass  # Columna vacía
             
             st.markdown("---")
-            st.caption("© CRM Kapitaliza ")
+            st.caption("© CRM BEWORK ")
 
 # ===== Clientes (alta + edición) =====
 with tab_cli:

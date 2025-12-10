@@ -1,4 +1,4 @@
-# 📋 REPORTE DE TESTS - Sistema CRM KAPITALIZA
+# 📋 REPORTE DE TESTS - Sistema CRM BEWORK
 
 ## 🎯 Propósito
 Este documento contiene los resultados de las pruebas completas del sistema CRM, incluyendo las correcciones realizadas para el problema de carga de datos en las diferentes pestañas.
