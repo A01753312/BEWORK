@@ -1,8 +1,4 @@
 # App para gestión de clientes / CRM
-# - Sidebar con filtros/acciones
-# - Pestañas ordenadas: Dashboard | Clientes | Documentos | Importar | Historial
-# - Auto-refresh tras subir documentos o importar Excel
-# - Se ELIMINA la importación de documentos desde ZIP
 
 # === CONFIGURACIÓN PROFESIONAL DEL CRM ===
 import streamlit as st
@@ -27,11 +23,6 @@ st.set_page_config(
 from google_auth_oauthlib.flow import Flow
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseUpload
-import json
-
-if "drive_creds" not in st.session_state:
-    st.session_state.drive_creds = None
-
 CLIENT_ID = st.secrets["GOOGLE_CLIENT_ID"]
 CLIENT_SECRET = st.secrets["GOOGLE_CLIENT_SECRET"]
 REDIRECT_URI = st.secrets["REDIRECT_URI"]
@@ -75,7 +66,6 @@ else:
 query_params = st.query_params
 if "code" in query_params and not st.session_state.drive_creds:
     code = query_params["code"]
-    
     # Solo procesar si no hemos procesado este código antes
     if "processed_auth_code" not in st.session_state or st.session_state.processed_auth_code != code:
         try:
@@ -374,19 +364,19 @@ st.markdown("""
     /* Warning */
     .stWarning {
         background-color: #FFFBF0;
-        border: 2px solid #FFD41D;
+        border: 2px solid #0A3D62;
         color: #744210;
         border-radius: 8px;
-        box-shadow: 0 2px 8px rgba(255, 212, 29, 0.1);
+        box-shadow: 0 2px 8px rgba(10, 61, 98, 0.08);
     }
     
     /* Info - Estilo especial para header */
     .stInfo {
         background-color: #F7FAFC;
-        border: 2px solid #FFD41D;
+        border: 2px solid #0A3D62;
         color: #2D3748;
         border-radius: 8px;
-        box-shadow: 0 2px 8px rgba(255, 212, 29, 0.1);
+        box-shadow: 0 2px 8px rgba(10, 61, 98, 0.08);
         text-align: center;
         font-weight: 500;
     }
@@ -423,16 +413,16 @@ st.markdown("""
     
     /* Toast messages */
     .stToast {
-        background-color: #FFFFFF;
+        background-color: #WHITE;
         color: #2D3748;
-        border: 1px solid #FFD41D;
+        border: 1px solid #0A3D62;
         border-radius: 8px;
         box-shadow: 0 4px 12px rgba(0,0,0,0.1);
     }
     
     /* Progress bar */
     .stProgress > div > div {
-        background-color: #FFD41D;
+        background-color: #0A3D62;
     }
     
     /* Caption text con tema claro */
@@ -1219,7 +1209,7 @@ def render_professional_header():
             st.markdown("""
             <div style="text-align: center; padding: 20px 0;">
                 <h1 style="
-                    color: #FFD41D; 
+                    color: #0A3D62; 
                     font-size: 2.5rem; 
                     font-weight: 700; 
                     margin: 0;
@@ -4836,7 +4826,6 @@ with tab_dash:
             
             if not estatus_pendientes.empty:
                 total_pendientes = len(estatus_pendientes)
-                monto_pendientes = estatus_pendientes['monto_analisis'].sum()
                 pct_pendientes = (total_pendientes / len(df_analisis) * 100)
                 
                 # Obtener breakdown por estatus pendiente
@@ -4854,7 +4843,7 @@ with tab_dash:
                 if len(detalle_estatus) > 3:
                     detalle_texto += f" y {len(detalle_estatus) - 3} más"
                 
-                st.info(f"💡 **Oportunidad:** {total_pendientes} créditos pendientes ({pct_pendientes:.0f}% del total) representan {formatear_monto(monto_pendientes)} en oportunidades. Incluye: {detalle_texto}. Priorizar seguimiento puede mejorar conversión.")
+                st.info(f"💡 **Oportunidad:** {total_pendientes} créditos pendientes ({pct_pendientes:.0f}% del total) representan {formatear_monto(estatus_pendientes['monto_analisis'].sum())} en oportunidades. Incluye: {detalle_texto}. Priorizar seguimiento puede mejorar conversión.")
             
             # === RESUMEN POR ESTATUS ===
             col_tabla, col_grafico = st.columns([1, 1])
