@@ -2600,6 +2600,65 @@ COLUMNS = [
 # Note: 'producto', 'fuente_base', 'usuario_cipre', and 'contrasena' are
 # already included above in the `COLUMNS` list; do not append duplicates.
 
+# --- Google Sheets: desired public header/order for the `clientes` sheet ---
+# The user requested these to be the ONLY columns visible in the Google Sheet.
+# Map internal column names (left) to the requested sheet headers (right).
+SHEET_INTERNAL_COLUMNS = [
+    "id",
+    "tipo_tramite",
+    "producto",
+    "fuente",
+    "nombre",
+    "telefono",
+    "sucursal",
+    "fecha_ingreso",
+    "capacidad",
+    "monto_propuesta",  # Monto Solicitado
+    "plazo",
+    "estado_civil",
+    "estatus",
+    "tipo_vivienda",
+    "correo",
+    "ref1_nombre",
+    "ref1_telefono",
+    "ref1_parentesco",
+    "ref2_nombre",
+    "ref2_telefono",
+    "ref2_parentesco",
+    "antiguedad_cuenta",
+    "usuario_cipre",
+    "contrasena",
+    "asesor",
+]
+
+SHEET_HEADERS = [
+    "ID (opcional)",
+    "Tipo de trámite",
+    "Producto *",
+    "Fuente",
+    "Nombre *",
+    "Teléfono",
+    "Sucursal *",
+    "Fecha ingreso",
+    "Capacidad",
+    "Monto Solicitado",
+    "Plazo (meses)",
+    "Estado civil",
+    "Estatus",
+    "Tipo de vivienda",
+    "Correo",
+    "Referencia 1 - Nombre",
+    "Referencia 1 - Teléfono",
+    "Referencia 1 - Parentesco",
+    "Referencia 2 - Nombre",
+    "Referencia 2 - Teléfono",
+    "Referencia 2 - Parentesco",
+    "Antigüedad de la cuenta registrada",
+    "Usuario Cipre",
+    "Contraseña",
+    "Asesor",
+]
+
 def cargar_clientes(force_reload: bool = False) -> pd.DataFrame:
     """
     Lee primero de Google Sheets con caché inteligente
@@ -2755,23 +2814,31 @@ def guardar_clientes_gsheet_append(df_nuevo: pd.DataFrame):
         if ws is None:
             return
             
-        df_nuevo = _ensure_columns(df_nuevo, COLUMNS)
+        # Prepare only the user-requested columns for the Google Sheet.
+        # Ensure all internal columns exist in the dataframe, then reorder and
+        # replace the column names with the human-friendly sheet headers.
+        df_nuevo = _ensure_columns(df_nuevo, SHEET_INTERNAL_COLUMNS)
+        df_sheet = df_nuevo[SHEET_INTERNAL_COLUMNS].copy()
+        df_sheet.columns = SHEET_HEADERS
 
-        # Asegurar encabezado
+        # Ensure header row in the sheet matches the requested labels.
         try:
             header_row = ws.row_values(1)
             header_norm = [str(h).strip() for h in header_row]
-            if header_norm[:len(COLUMNS)] != COLUMNS:
-                ws.update("A1", [COLUMNS])
+            if header_norm[:len(SHEET_HEADERS)] != SHEET_HEADERS:
+                ws.update("A1", [SHEET_HEADERS])
         except Exception:
-            ws.update("A1", [COLUMNS])
+            try:
+                ws.update("A1", [SHEET_HEADERS])
+            except Exception:
+                pass
 
         df_actual = _sheet_to_df(ws)
-        
-        # Si la hoja está vacía, usar set_with_dataframe (una sola vez)
+
+        # If the sheet is empty, write the dataframe with headers (one shot).
         if df_actual.empty:
             try:
-                set_with_dataframe(ws, df_nuevo, include_index=False, include_column_header=True, resize=True)
+                set_with_dataframe(ws, df_sheet, include_index=False, include_column_header=True, resize=True)
             except Exception:
                 pass
             return
