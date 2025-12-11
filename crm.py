@@ -2587,6 +2587,8 @@ COLUMNS = [
     "estatus","monto_propuesta","monto_final","observaciones",
     "score","telefono","correo","analista","fuente"
 ]
+# Añadir columna 'producto' para soportar MEJORAVIT/INBURSA/MULTIVA
+COLUMNS.append("producto")
 
 def cargar_clientes(force_reload: bool = False) -> pd.DataFrame:
     """
@@ -4898,6 +4900,7 @@ with tab_cli:
                 id_n = st.text_input("ID (opcional)", key="form_id")
                 nombre_n = st.text_input("Nombre *")
                 sucursal_n = st.selectbox("Sucursal *", SUCURSALES)
+                producto_n = st.selectbox("Producto *", ["MEJORAVIT", "INBURSA", "MULTIVA"], index=0)
 
                 # REPLACED: permitir elegir un asesor existente dentro del form,
                 # o usar el "Nuevo asesor" si el checkbox (fuera del form) está marcado.
@@ -4913,8 +4916,6 @@ with tab_cli:
                 else:
                     # usar la selección del selectbox (o '' si eligió "(Sin asesor)")
                     asesor_n = "" if asesor_select == "(Sin asesor)" else asesor_select
-
-                analista_n = st.text_input("Analista")
             with c2:
                 fecha_ingreso_n = st.date_input("Fecha ingreso", value=date.today())
                 fecha_dispersion_n = st.date_input("Fecha dispersión", value=date.today())
@@ -4975,6 +4976,7 @@ with tab_cli:
                             "id": cid,
                             "nombre": nombre_n.strip(),
                             "sucursal": sucursal_n,
+                            "producto": producto_n,
                             "asesor": asesor_final,
                             "fecha_ingreso": str(fecha_ingreso_n),
                             "fecha_dispersion": str(fecha_dispersion_n),
@@ -4985,7 +4987,7 @@ with tab_cli:
                             "score": str(score_n).strip(),
                             "telefono": telefono_n.strip(),
                             "correo": correo_n.strip(),
-                            "analista": analista_n.strip(),
+                            # analista: removed from creation form (kept as a column for legacy data)
                             "fuente": fuente_n.strip(),
                         }
                         base = pd.concat([df_cli, pd.DataFrame([nuevo])], ignore_index=True)
@@ -5026,6 +5028,7 @@ with tab_cli:
         colcfg = {
             "id": st.column_config.TextColumn("ID", disabled=True),
             "nombre": st.column_config.TextColumn("Nombre"),
+            "producto": st.column_config.SelectboxColumn("Producto", options=["", "MEJORAVIT", "INBURSA", "MULTIVA"], required=False),
             "sucursal": st.column_config.SelectboxColumn("Sucursal", options=[""]+SUCURSALES, required=False),
             "asesor": st.column_config.TextColumn("Asesor"),
             "fecha_ingreso": st.column_config.TextColumn("Fecha ingreso (YYYY-MM-DD)"),
