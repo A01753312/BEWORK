@@ -2844,30 +2844,73 @@ def guardar_clientes_gsheet_append(df_nuevo: pd.DataFrame):
             except Exception:
                 pass
             return
-        
-        # Normalize actual sheet dataframe to internal column names (SHEET_INTERNAL_COLUMNS)
+
+        # Read sheet header row to determine the actual column order in the sheet
+        sheet_header_row = []
         try:
-            # If the sheet uses human headers, rename them back to internal names
+            sheet_header_row = ws.row_values(1)
+        except Exception:
+            try:
+                sheet_header_row = list(df_actual.columns)
+            except Exception:
+                sheet_header_row = []
+
+        # Build mapping from human headers to internal names
+        header_mapping = dict(zip(SHEET_HEADERS, SHEET_INTERNAL_COLUMNS))
+
+        # Determine internal column order as present in the sheet (fall back to canonical order)
+        sheet_internal_order = []
+        try:
+            for h in sheet_header_row:
+                if h in header_mapping:
+                    sheet_internal_order.append(header_mapping[h])
+                elif h in SHEET_INTERNAL_COLUMNS:
+                    sheet_internal_order.append(h)
+            for c in SHEET_INTERNAL_COLUMNS:
+                if c not in sheet_internal_order:
+                    sheet_internal_order.append(c)
+        except Exception:
+            sheet_internal_order = SHEET_INTERNAL_COLUMNS.copy()
+
+        # If the sheet uses human headers, rename to internal names for comparison
+        try:
             if set(SHEET_HEADERS).issubset(set(df_actual.columns)):
-                mapping = dict(zip(SHEET_HEADERS, SHEET_INTERNAL_COLUMNS))
-                df_actual = df_actual.rename(columns=mapping)
+                df_actual = df_actual.rename(columns=header_mapping)
         except Exception:
             pass
 
         # Ensure all expected internal columns exist on the actual df
         df_actual = _ensure_columns(df_actual, SHEET_INTERNAL_COLUMNS)
 
-        # Índices por ID para detección eficiente
-        idx_actual = {str(r["id"]): i for i, r in df_actual.reset_index(drop=True).iterrows() if str(r.get("id", "")).strip() != ""}
-        idx_nuevo  = {str(r["id"]): i for i, r in df_nuevo.reset_index(drop=True).iterrows() if str(r.get("id", "")).strip() != ""}
+        # Build index maps (first occurrence wins)
+        df_act_idx = df_actual.reset_index(drop=True)
+        idx_actual = {}
+        for i, r in df_act_idx.iterrows():
+            key = str(r.get("id", "")).strip()
+            if key and key not in idx_actual:
+                idx_actual[key] = i
+
+        df_nuevo_idx = df_nuevo.reset_index(drop=True)
+        idx_nuevo = {str(r["id"]): i for i, r in df_nuevo_idx.iterrows() if str(r.get("id", "")).strip() != ""}
+
+        def col_idx_to_letter(n: int) -> str:
+            # Convert 1-based column index to Excel letters (A, B, ..., Z, AA, AB, ...)
+            letters = []
+            while n > 0:
+                n, rem = divmod(n - 1, 26)
+                letters.append(chr(65 + rem))
+            return "".join(reversed(letters))
 
         # 1) Nuevos: append en lote
         nuevos_ids = [i for i in idx_nuevo.keys() if i not in idx_actual]
         if nuevos_ids:
-            # Append rows using the SHEET_INTERNAL_COLUMNS order so they match the sheet headers
-            rows_to_append = df_nuevo.loc[df_nuevo["id"].astype(str).isin(nuevos_ids), SHEET_INTERNAL_COLUMNS].values.tolist()
             try:
-                ws.append_rows(rows_to_append, value_input_option="RAW")
+                cols_for_append = [c for c in sheet_internal_order if c in df_nuevo_idx.columns]
+                if not cols_for_append:
+                    cols_for_append = SHEET_INTERNAL_COLUMNS.copy()
+                rows_to_append = df_nuevo_idx.loc[df_nuevo_idx["id"].astype(str).isin(nuevos_ids), cols_for_append].values.tolist()
+                if rows_to_append:
+                    ws.append_rows(rows_to_append, value_input_option="RAW")
             except Exception:
                 pass
 
@@ -2875,22 +2918,30 @@ def guardar_clientes_gsheet_append(df_nuevo: pd.DataFrame):
         comunes_ids = [i for i in idx_nuevo.keys() if i in idx_actual]
         if comunes_ids:
             updates = []
+            cols_for_update = [c for c in sheet_internal_order if c in SHEET_INTERNAL_COLUMNS]
+            if not cols_for_update:
+                cols_for_update = SHEET_INTERNAL_COLUMNS.copy()
+
             for _id in comunes_ids:
-                row_new = df_nuevo.loc[idx_nuevo[_id], SHEET_INTERNAL_COLUMNS]
-                row_old = df_actual.loc[idx_actual[_id], SHEET_INTERNAL_COLUMNS]
-                if not row_new.equals(row_old):
-                    fila = idx_actual[_id] + 2  # +2 por encabezado (1-indexed)
-                    # Calcular letra de última columna basada en SHEET_INTERNAL_COLUMNS
-                    import string
-                    col_count = len(SHEET_INTERNAL_COLUMNS)
-                    col_letter = string.ascii_uppercase[col_count - 1] if col_count <= 26 else 'Z'
+                i_new = idx_nuevo[_id]
+                i_old = idx_actual[_id]
+                row_new = df_nuevo_idx.loc[i_new, cols_for_update]
+                row_old = df_act_idx.loc[i_old, cols_for_update]
+                try:
+                    equal = row_new.equals(row_old)
+                except Exception:
+                    equal = False
+
+                if not equal:
+                    fila = i_old + 2  # +2 por encabezado (1-indexed)
+                    col_count = len(cols_for_update)
+                    col_letter = col_idx_to_letter(col_count)
                     rango = f"A{fila}:{col_letter}{fila}"
                     updates.append({
                         "range": rango,
                         "values": [row_new.tolist()]
                     })
 
-            # Batch update (máximo 100 por lote para evitar límites de API)
             if updates:
                 try:
                     for i in range(0, len(updates), 100):

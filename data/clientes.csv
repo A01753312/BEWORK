@@ -1,0 +1,3 @@
+id,tipo_tramite,producto,fuente,fuente_base,nombre,telefono,sucursal,capacidad,monto_final,monto_propuesta,plazo,estado_civil,tipo_vivienda,correo,ref1_nombre,ref1_telefono,ref1_parentesco,ref2_nombre,ref2_telefono,ref2_parentesco,antiguedad_cuenta,asesor,fecha_ingreso,fecha_dispersion,estatus,observaciones,score,analista
+C9998,Nuevo,MEJORAVIT,LEADS,,Prueba Uno,555000111,BeworkEdoMex,1000,,5000,12,Soltero,Propia,uno@example.com,Ref Uno,111111,Hijo,Ref Dos,222222,Amig@,2 años,,2025-12-11,,DISPERSADO,,,
+C9999,Nuevo,MEJORAVIT,LEADS,,Prueba Dos,555000222,BeworkEdoMex,1000,,5000,12,Soltero,Propia,uno@example.com,Ref Uno,111111,Hijo,Ref Dos,222222,Amig@,2 años,,2025-12-11,,DISPERSADO,,,
