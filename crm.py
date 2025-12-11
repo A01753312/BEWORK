@@ -2585,7 +2585,12 @@ def selectbox_multi(label: str, options: list[str], state_key: str) -> list[str]
 COLUMNS = [
     "id","nombre","sucursal","asesor","fecha_ingreso","fecha_dispersion",
     "estatus","monto_propuesta","monto_final","observaciones",
-    "score","telefono","correo","analista","fuente"
+    "score","telefono","correo","analista","fuente",
+    # Campos nuevos solicitados por el usuario
+    "tipo_tramite","capacidad","plazo","estado_civil","tipo_vivienda",
+    "ref1_nombre","ref1_telefono","ref1_parentesco",
+    "ref2_nombre","ref2_telefono","ref2_parentesco",
+    "antiguedad_cuenta"
 ]
 # Añadir columna 'producto' para soportar MEJORAVIT/INBURSA/MULTIVA
 COLUMNS.append("producto")
@@ -4898,7 +4903,10 @@ with tab_cli:
             c1, c2, c3 = st.columns(3)
             with c1:
                 id_n = st.text_input("ID (opcional)", key="form_id")
+                tipo_tramite_n = st.selectbox("Tipo de trámite", ["Compra de deuda", "Renovacion", "Nuevo", "Adicional"], index=2)
+                fuente_input = st.text_input("Fuente (mayúsculas si aplica, p.ej. LUZWARE)")
                 nombre_n = st.text_input("Nombre *")
+                telefono_n = st.text_input("Teléfono")
                 sucursal_n = st.selectbox("Sucursal *", SUCURSALES)
                 producto_n = st.selectbox("Producto *", ["MEJORAVIT", "INBURSA", "MULTIVA"], index=0)
 
@@ -4918,15 +4926,25 @@ with tab_cli:
                     asesor_n = "" if asesor_select == "(Sin asesor)" else asesor_select
             with c2:
                 fecha_ingreso_n = st.date_input("Fecha ingreso", value=date.today())
-                fecha_dispersion_n = st.date_input("Fecha dispersión", value=date.today())
+                capacidad_n = st.text_input("Capacidad")
+                monto_solicitado_n = st.text_input("Monto Solicitado", value="")
+                # guardar Monto Solicitado en columna existente 'monto_propuesta'
+                plazo_n = st.selectbox("Plazo (meses)", [12,24,36,28,54,60], index=0)
+                estado_civil_n = st.selectbox("Estado civil", ["Casado","Soltero","Viudo","Divorciado"], index=1)
                 estatus_n = st.selectbox("Estatus", ESTATUS_OPCIONES, index=0)
             with c3:
-                monto_prop_n = st.text_input("Monto propuesta", value="")
-                monto_final_n = st.text_input("Monto final", value="")
-                score_n = st.text_input("Score", value="")
-                telefono_n = st.text_input("Teléfono")
+                tipo_vivienda_n = st.selectbox("Tipo de vivienda", ["Propia","Renta"], index=0)
                 correo_n = st.text_input("Correo")
-                fuente_n = st.text_input("Fuente", value="")
+                # Referencia 1
+                ref1_nombre_n = st.text_input("Referencia 1 - Nombre")
+                ref1_telefono_n = st.text_input("Referencia 1 - Teléfono")
+                ref1_parentesco_n = st.text_input("Referencia 1 - Parentesco (hijo/espos@/amig@/familiar)")
+                # Referencia 2
+                ref2_nombre_n = st.text_input("Referencia 2 - Nombre")
+                ref2_telefono_n = st.text_input("Referencia 2 - Teléfono")
+                ref2_parentesco_n = st.text_input("Referencia 2 - Parentesco (hijo/espos@/amig@/familiar)")
+                antiguedad_cuenta_n = st.text_input("Antigüedad de la cuenta registrada")
+                fuente_n = fuente_input.strip().upper()
             obs_n = st.text_area("Observaciones")
 
             st.markdown("**Documentos:**")
@@ -4979,16 +4997,24 @@ with tab_cli:
                             "producto": producto_n,
                             "asesor": asesor_final,
                             "fecha_ingreso": str(fecha_ingreso_n),
-                            "fecha_dispersion": str(fecha_dispersion_n),
                             "estatus": estatus_n,
-                            "monto_propuesta": str(monto_prop_n).strip(),
-                            "monto_final": str(monto_final_n).strip(),
-                            "observaciones": obs_n.strip(),
-                            "score": str(score_n).strip(),
+                            # Monto solicitado se guarda en 'monto_propuesta' para compatibilidad
                             "telefono": telefono_n.strip(),
                             "correo": correo_n.strip(),
-                            # analista: removed from creation form (kept as a column for legacy data)
-                            "fuente": fuente_n.strip(),
+                            "fuente": fuente_n,
+                            # Campos nuevos
+                            "tipo_tramite": tipo_tramite_n,
+                            "capacidad": capacidad_n,
+                            "plazo": str(plazo_n),
+                            "estado_civil": estado_civil_n,
+                            "tipo_vivienda": tipo_vivienda_n,
+                            "ref1_nombre": ref1_nombre_n.strip(),
+                            "ref1_telefono": ref1_telefono_n.strip(),
+                            "ref1_parentesco": ref1_parentesco_n.strip(),
+                            "ref2_nombre": ref2_nombre_n.strip(),
+                            "ref2_telefono": ref2_telefono_n.strip(),
+                            "ref2_parentesco": ref2_parentesco_n.strip(),
+                            "antiguedad_cuenta": antiguedad_cuenta_n.strip()
                         }
                         base = pd.concat([df_cli, pd.DataFrame([nuevo])], ignore_index=True)
                         guardar_clientes(base)
@@ -5029,20 +5055,21 @@ with tab_cli:
             "id": st.column_config.TextColumn("ID", disabled=True),
             "nombre": st.column_config.TextColumn("Nombre"),
             "producto": st.column_config.SelectboxColumn("Producto", options=["", "MEJORAVIT", "INBURSA", "MULTIVA"], required=False),
+            "tipo_tramite": st.column_config.SelectboxColumn("Tipo trámite", options=["","Compra de deuda","Renovacion","Nuevo","Adicional"], required=False),
+            "capacidad": st.column_config.TextColumn("Capacidad"),
+            "plazo": st.column_config.SelectboxColumn("Plazo", options=["",12,24,36,28,54,60], required=False),
+            "estado_civil": st.column_config.SelectboxColumn("Estado civil", options=["","Casado","Soltero","Viudo","Divorciado"], required=False),
+            "tipo_vivienda": st.column_config.SelectboxColumn("Tipo vivienda", options=["","Propia","Renta"], required=False),
+            "ref1_nombre": st.column_config.TextColumn("Ref1 - Nombre"),
+            "ref1_telefono": st.column_config.TextColumn("Ref1 - Teléfono"),
+            "ref1_parentesco": st.column_config.TextColumn("Ref1 - Parentesco"),
+            "ref2_nombre": st.column_config.TextColumn("Ref2 - Nombre"),
+            "ref2_telefono": st.column_config.TextColumn("Ref2 - Teléfono"),
+            "ref2_parentesco": st.column_config.TextColumn("Ref2 - Parentesco"),
+            "antiguedad_cuenta": st.column_config.TextColumn("Antigüedad cuenta"),
             "sucursal": st.column_config.SelectboxColumn("Sucursal", options=[""]+SUCURSALES, required=False),
             "asesor": st.column_config.TextColumn("Asesor"),
-            "fecha_ingreso": st.column_config.TextColumn("Fecha ingreso (YYYY-MM-DD)"),
-            "fecha_dispersion": st.column_config.TextColumn("Fecha dispersión (YYYY-MM-DD)"),
-            "estatus": st.column_config.SelectboxColumn("Estatus", options=ESTATUS_OPCIONES, required=True),
-            "monto_propuesta": st.column_config.TextColumn("Monto propuesta"),
-            "monto_final": st.column_config.TextColumn("Monto final"),
-            
-            "observaciones": st.column_config.TextColumn("Observaciones"),
-            "score": st.column_config.TextColumn("Score"),
-            "telefono": st.column_config.TextColumn("Teléfono"),
-            "correo": st.column_config.TextColumn("Correo"),
-            "analista": st.column_config.TextColumn("Analista"),
-            "fuente": st.column_config.TextColumn("Fuente"),
+            "estatus": st.column_config.SelectboxColumn("Estatus", options=ESTATUS_OPCIONES, required=True)
         }
 
         df_clientes_mostrar["sucursal"] = df_clientes_mostrar["sucursal"].where(df_clientes_mostrar["sucursal"].isin(SUCURSALES), "")
