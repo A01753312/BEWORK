@@ -2782,6 +2782,13 @@ def guardar_clientes(df: pd.DataFrame):
         # Google Sheets (async, sin bloquear)
         if USE_GSHEETS:
             try:
+                # Debug: log that we are about to call gsheet append
+                try:
+                    logp = DATA_DIR / "gs_debug.log"
+                    with open(logp, "a", encoding="utf-8") as fh:
+                        fh.write(f"{datetime.now().isoformat()} - guardar_clientes called; df_rows={len(df_to_save)}\n")
+                except Exception:
+                    pass
                 guardar_clientes_gsheet_append(df_to_save)
             except Exception:
                 pass
@@ -2945,41 +2952,15 @@ def guardar_clientes_gsheet_append(df_nuevo: pd.DataFrame):
                 _gs_debug(f"Exception during append: {e}")
                 pass
 
-        # 2) Actualizados: batch update (más eficiente)
+        # 2) Actualizados: disabled by default to avoid accidental clearing of sheet rows.
+        # To enable updates later, set DO_UPDATES = True and re-evaluate carefully.
+        DO_UPDATES = False
         comunes_ids = [i for i in idx_nuevo.keys() if i in idx_actual]
         if comunes_ids:
-            updates = []
-            for _id in comunes_ids:
-                i_new = idx_nuevo[_id]
-                i_old = idx_actual[_id]
-                internal_new = df_nuevo_idx.loc[i_new]
-                internal_old = df_act_idx.loc[i_old]
-                row_new_full = build_full_row_from_internal(internal_new)
-                row_old_full = build_full_row_from_internal(internal_old)
-                try:
-                    equal = row_new_full == row_old_full
-                except Exception:
-                    equal = False
-
-                if not equal:
-                    fila = i_old + 2  # +2 por encabezado (1-indexed)
-                    col_count = len(sheet_columns)
-                    col_letter = col_idx_to_letter(col_count)
-                    rango = f"A{fila}:{col_letter}{fila}"
-                    updates.append({
-                        "range": rango,
-                        "values": [row_new_full]
-                    })
-                    _gs_debug(f"Queued update id={_id} fila={fila} rango={rango} values_sample={row_new_full[:6]}")
-
-            if updates:
-                try:
-                    for i in range(0, len(updates), 100):
-                        batch = updates[i:i+100]
-                        ws.batch_update(batch, value_input_option="RAW")
-                except Exception as e:
-                    _gs_debug(f"Exception during batch_update: {e}")
-                    pass
+            _gs_debug(f"Detected {len(comunes_ids)} existing ids; updates are currently disabled (DO_UPDATES={DO_UPDATES}). Skipping updates to avoid data loss.")
+            if DO_UPDATES:
+                # The update logic was intentionally removed temporarily.
+                pass
                     
     except Exception:
         pass
