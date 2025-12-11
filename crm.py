@@ -2588,7 +2588,7 @@ COLUMNS = [
     # Capacidad, Monto que alcanza (monto_final), Monto solicitado (monto_propuesta), Plazo,
     # Estado civil, Tipo de vivienda, Correo, Referencias, Antigüedad, Asesor
     "tipo_tramite","producto","fuente","fuente_base",
-    "nombre","telefono","capacidad","monto_final","monto_propuesta","plazo",
+    "nombre","telefono","sucursal","capacidad","monto_final","monto_propuesta","plazo",
     "estado_civil","tipo_vivienda","correo",
     "ref1_nombre","ref1_telefono","ref1_parentesco",
     "ref2_nombre","ref2_telefono","ref2_parentesco",
@@ -2597,12 +2597,8 @@ COLUMNS = [
     "estatus","observaciones",
     "score","analista"
 ]
-# Añadir columna 'producto' para soportar MEJORAVIT/INBURSA/MULTIVA
-COLUMNS.append("producto")
-# Campos adicionales para fuente/bases y credenciales
-COLUMNS.append("fuente_base")
-COLUMNS.append("usuario_cipre")
-COLUMNS.append("contrasena")
+# Note: 'producto', 'fuente_base', 'usuario_cipre', and 'contrasena' are
+# already included above in the `COLUMNS` list; do not append duplicates.
 
 def cargar_clientes(force_reload: bool = False) -> pd.DataFrame:
     """
