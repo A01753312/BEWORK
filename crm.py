@@ -2594,6 +2594,10 @@ COLUMNS = [
 ]
 # Añadir columna 'producto' para soportar MEJORAVIT/INBURSA/MULTIVA
 COLUMNS.append("producto")
+# Campos adicionales para fuente/bases y credenciales
+COLUMNS.append("fuente_base")
+COLUMNS.append("usuario_cipre")
+COLUMNS.append("contrasena")
 
 def cargar_clientes(force_reload: bool = False) -> pd.DataFrame:
     """
@@ -4904,7 +4908,10 @@ with tab_cli:
             with c1:
                 id_n = st.text_input("ID (opcional)", key="form_id")
                 tipo_tramite_n = st.selectbox("Tipo de trámite", ["Compra de deuda", "Renovacion", "Nuevo", "Adicional"], index=2)
-                fuente_input = st.text_input("Fuente (mayúsculas si aplica, p.ej. LUZWARE)")
+                fuente_select = st.selectbox("Fuente", ["LUZWARE", "LEADS", "SEGUIMIENTO"], index=1)
+                fuente_base_input = ""
+                if fuente_select == "LUZWARE":
+                    fuente_base_input = st.text_input("Nombre de la base (LUZWARE) - escribir en mayúsculas")
                 nombre_n = st.text_input("Nombre *")
                 telefono_n = st.text_input("Teléfono")
                 sucursal_n = st.selectbox("Sucursal *", SUCURSALES)
@@ -4938,13 +4945,16 @@ with tab_cli:
                 # Referencia 1
                 ref1_nombre_n = st.text_input("Referencia 1 - Nombre")
                 ref1_telefono_n = st.text_input("Referencia 1 - Teléfono")
-                ref1_parentesco_n = st.text_input("Referencia 1 - Parentesco (hijo/espos@/amig@/familiar)")
+                ref1_parentesco_n = st.selectbox("Referencia 1 - Parentesco", ["Hijo","Espos@","Amig@","Familiar"], index=0)
                 # Referencia 2
                 ref2_nombre_n = st.text_input("Referencia 2 - Nombre")
                 ref2_telefono_n = st.text_input("Referencia 2 - Teléfono")
-                ref2_parentesco_n = st.text_input("Referencia 2 - Parentesco (hijo/espos@/amig@/familiar)")
+                ref2_parentesco_n = st.selectbox("Referencia 2 - Parentesco", ["Hijo","Espos@","Amig@","Familiar"], index=0)
                 antiguedad_cuenta_n = st.text_input("Antigüedad de la cuenta registrada")
-                fuente_n = fuente_input.strip().upper()
+                usuario_cipre_n = st.text_input("Usuario Cipre")
+                contrasena_n = st.text_input("Contraseña")
+                fuente_n = str(fuente_select).strip().upper()
+                fuente_base_n = (fuente_base_input or "").strip().upper()
             obs_n = st.text_area("Observaciones")
 
             st.markdown("**Documentos:**")
@@ -4999,9 +5009,11 @@ with tab_cli:
                             "fecha_ingreso": str(fecha_ingreso_n),
                             "estatus": estatus_n,
                             # Monto solicitado se guarda en 'monto_propuesta' para compatibilidad
+                            "monto_propuesta": str(monto_solicitado_n).strip(),
                             "telefono": telefono_n.strip(),
                             "correo": correo_n.strip(),
                             "fuente": fuente_n,
+                            "fuente_base": fuente_base_n,
                             # Campos nuevos
                             "tipo_tramite": tipo_tramite_n,
                             "capacidad": capacidad_n,
@@ -5014,7 +5026,9 @@ with tab_cli:
                             "ref2_nombre": ref2_nombre_n.strip(),
                             "ref2_telefono": ref2_telefono_n.strip(),
                             "ref2_parentesco": ref2_parentesco_n.strip(),
-                            "antiguedad_cuenta": antiguedad_cuenta_n.strip()
+                            "antiguedad_cuenta": antiguedad_cuenta_n.strip(),
+                            "usuario_cipre": usuario_cipre_n.strip(),
+                            "contrasena": contrasena_n.strip()
                         }
                         base = pd.concat([df_cli, pd.DataFrame([nuevo])], ignore_index=True)
                         guardar_clientes(base)
@@ -5062,11 +5076,16 @@ with tab_cli:
             "tipo_vivienda": st.column_config.SelectboxColumn("Tipo vivienda", options=["","Propia","Renta"], required=False),
             "ref1_nombre": st.column_config.TextColumn("Ref1 - Nombre"),
             "ref1_telefono": st.column_config.TextColumn("Ref1 - Teléfono"),
-            "ref1_parentesco": st.column_config.TextColumn("Ref1 - Parentesco"),
+            "ref1_parentesco": st.column_config.SelectboxColumn("Ref1 - Parentesco", options=["","Hijo","Espos@","Amig@","Familiar"], required=False),
             "ref2_nombre": st.column_config.TextColumn("Ref2 - Nombre"),
             "ref2_telefono": st.column_config.TextColumn("Ref2 - Teléfono"),
-            "ref2_parentesco": st.column_config.TextColumn("Ref2 - Parentesco"),
+            "ref2_parentesco": st.column_config.SelectboxColumn("Ref2 - Parentesco", options=["","Hijo","Espos@","Amig@","Familiar"], required=False),
             "antiguedad_cuenta": st.column_config.TextColumn("Antigüedad cuenta"),
+            "fuente": st.column_config.SelectboxColumn("Fuente", options=["","LUZWARE","LEADS","SEGUIMIENTO"], required=False),
+            "fuente_base": st.column_config.TextColumn("Base LUZWARE"),
+            "usuario_cipre": st.column_config.TextColumn("Usuario Cipre"),
+            "contrasena": st.column_config.TextColumn("Contraseña"),
+            "monto_propuesta": st.column_config.TextColumn("Monto solicitado"),
             "sucursal": st.column_config.SelectboxColumn("Sucursal", options=[""]+SUCURSALES, required=False),
             "asesor": st.column_config.TextColumn("Asesor"),
             "estatus": st.column_config.SelectboxColumn("Estatus", options=ESTATUS_OPCIONES, required=True)
