@@ -2498,9 +2498,9 @@ def stable_multiselect(
         opts = [o for o in all_options]
         selected_now = [o for o in st.session_state.get(state_key, []) if o in all_options]
         if wkey in st.session_state:
-            sel = st.multiselect("", options=opts, key=wkey, label_visibility="collapsed", help=help_txt)
+            sel = st.multiselect(title, options=opts, key=wkey, label_visibility="collapsed", help=help_txt)
         else:
-            sel = st.multiselect("", options=opts, default=selected_now, key=wkey, label_visibility="collapsed", help=help_txt)
+            sel = st.multiselect(title, options=opts, default=selected_now, key=wkey, label_visibility="collapsed", help=help_txt)
 
         # Sincronizar widget → estado lógico
         if sel != st.session_state.get(state_key):
@@ -2574,9 +2574,9 @@ def selectbox_multi(label: str, options: list[str], state_key: str) -> list[str]
         checked = st.checkbox("Seleccionar todas", value=all_selected, key=chk_key, on_change=_on_checkbox)
         # multiselect con callback para sincronizar y forzar rerun
         if checked:
-            st.multiselect("", options=opts, default=opts, disabled=True, label_visibility="collapsed", key=wkey)
+            st.multiselect(label, options=opts, default=opts, disabled=True, label_visibility="collapsed", key=wkey)
         else:
-            st.multiselect("", options=opts, default=selected, label_visibility="collapsed", key=wkey, on_change=_on_ms_change)
+            st.multiselect(label, options=opts, default=selected, label_visibility="collapsed", key=wkey, on_change=_on_ms_change)
 
     return st.session_state[state_key]
 
