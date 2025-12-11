@@ -2811,6 +2811,14 @@ def guardar_clientes_gsheet_append(df_nuevo: pd.DataFrame):
     if df_nuevo is None or df_nuevo.empty:
         return
 
+    def _gs_debug(msg: str):
+        try:
+            logp = DATA_DIR / "gs_debug.log"
+            with open(logp, "a", encoding="utf-8") as fh:
+                fh.write(f"{datetime.now().isoformat()} - {msg}\n")
+        except Exception:
+            pass
+
     try:
         ws = _gs_open_worksheet(GSHEET_TAB)
         if ws is None:
@@ -2835,6 +2843,8 @@ def guardar_clientes_gsheet_append(df_nuevo: pd.DataFrame):
             except Exception:
                 pass
 
+        _gs_debug(f"Prepared df_sheet columns={list(df_sheet.columns)}")
+
         df_actual = _sheet_to_df(ws)
 
         # If the sheet is empty, write the dataframe with headers (one shot).
@@ -2854,6 +2864,8 @@ def guardar_clientes_gsheet_append(df_nuevo: pd.DataFrame):
                 sheet_header_row = list(df_actual.columns)
             except Exception:
                 sheet_header_row = []
+
+        _gs_debug(f"Sheet header row={sheet_header_row}")
 
         # Build mapping from human headers to internal names
         header_mapping = dict(zip(SHEET_HEADERS, SHEET_INTERNAL_COLUMNS))
@@ -2909,9 +2921,11 @@ def guardar_clientes_gsheet_append(df_nuevo: pd.DataFrame):
                 if not cols_for_append:
                     cols_for_append = SHEET_INTERNAL_COLUMNS.copy()
                 rows_to_append = df_nuevo_idx.loc[df_nuevo_idx["id"].astype(str).isin(nuevos_ids), cols_for_append].values.tolist()
+                _gs_debug(f"Appending {len(rows_to_append)} rows; cols_for_append={cols_for_append}; sample={rows_to_append[:2]}")
                 if rows_to_append:
                     ws.append_rows(rows_to_append, value_input_option="RAW")
-            except Exception:
+            except Exception as e:
+                _gs_debug(f"Exception during append: {e}")
                 pass
 
         # 2) Actualizados: batch update (más eficiente)
@@ -2941,6 +2955,7 @@ def guardar_clientes_gsheet_append(df_nuevo: pd.DataFrame):
                         "range": rango,
                         "values": [row_new.tolist()]
                     })
+                    _gs_debug(f"Queued update id={_id} fila={fila} rango={rango} values_sample={row_new.tolist()[:6]}")
 
             if updates:
                 try:
