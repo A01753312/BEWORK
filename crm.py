@@ -2845,16 +2845,27 @@ def guardar_clientes_gsheet_append(df_nuevo: pd.DataFrame):
                 pass
             return
         
-        df_actual = _ensure_columns(df_actual, COLUMNS)
+        # Normalize actual sheet dataframe to internal column names (SHEET_INTERNAL_COLUMNS)
+        try:
+            # If the sheet uses human headers, rename them back to internal names
+            if set(SHEET_HEADERS).issubset(set(df_actual.columns)):
+                mapping = dict(zip(SHEET_HEADERS, SHEET_INTERNAL_COLUMNS))
+                df_actual = df_actual.rename(columns=mapping)
+        except Exception:
+            pass
+
+        # Ensure all expected internal columns exist on the actual df
+        df_actual = _ensure_columns(df_actual, SHEET_INTERNAL_COLUMNS)
 
         # Índices por ID para detección eficiente
-        idx_actual = {str(r["id"]): i for i, r in df_actual.reset_index(drop=True).iterrows() if str(r["id"]).strip() != ""}
-        idx_nuevo  = {str(r["id"]): i for i, r in df_nuevo.reset_index(drop=True).iterrows() if str(r["id"]).strip() != ""}
+        idx_actual = {str(r["id"]): i for i, r in df_actual.reset_index(drop=True).iterrows() if str(r.get("id", "")).strip() != ""}
+        idx_nuevo  = {str(r["id"]): i for i, r in df_nuevo.reset_index(drop=True).iterrows() if str(r.get("id", "")).strip() != ""}
 
         # 1) Nuevos: append en lote
         nuevos_ids = [i for i in idx_nuevo.keys() if i not in idx_actual]
         if nuevos_ids:
-            rows_to_append = df_nuevo.loc[df_nuevo["id"].astype(str).isin(nuevos_ids), COLUMNS].values.tolist()
+            # Append rows using the SHEET_INTERNAL_COLUMNS order so they match the sheet headers
+            rows_to_append = df_nuevo.loc[df_nuevo["id"].astype(str).isin(nuevos_ids), SHEET_INTERNAL_COLUMNS].values.tolist()
             try:
                 ws.append_rows(rows_to_append, value_input_option="RAW")
             except Exception:
@@ -2865,13 +2876,14 @@ def guardar_clientes_gsheet_append(df_nuevo: pd.DataFrame):
         if comunes_ids:
             updates = []
             for _id in comunes_ids:
-                row_new = df_nuevo.loc[idx_nuevo[_id], COLUMNS]
-                row_old = df_actual.loc[idx_actual[_id], COLUMNS]
+                row_new = df_nuevo.loc[idx_nuevo[_id], SHEET_INTERNAL_COLUMNS]
+                row_old = df_actual.loc[idx_actual[_id], SHEET_INTERNAL_COLUMNS]
                 if not row_new.equals(row_old):
                     fila = idx_actual[_id] + 2  # +2 por encabezado (1-indexed)
-                    # Calcular letra de última columna (ej: P para 16 columnas)
+                    # Calcular letra de última columna basada en SHEET_INTERNAL_COLUMNS
                     import string
-                    col_letter = string.ascii_uppercase[len(COLUMNS) - 1] if len(COLUMNS) <= 26 else 'Z'
+                    col_count = len(SHEET_INTERNAL_COLUMNS)
+                    col_letter = string.ascii_uppercase[col_count - 1] if col_count <= 26 else 'Z'
                     rango = f"A{fila}:{col_letter}{fila}"
                     updates.append({
                         "range": rango,
