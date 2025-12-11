@@ -2870,19 +2870,25 @@ def guardar_clientes_gsheet_append(df_nuevo: pd.DataFrame):
         # Build mapping from human headers to internal names
         header_mapping = dict(zip(SHEET_HEADERS, SHEET_INTERNAL_COLUMNS))
 
-        # Determine internal column order as present in the sheet (fall back to canonical order)
-        sheet_internal_order = []
-        try:
-            for h in sheet_header_row:
-                if h in header_mapping:
-                    sheet_internal_order.append(header_mapping[h])
-                elif h in SHEET_INTERNAL_COLUMNS:
-                    sheet_internal_order.append(h)
-            for c in SHEET_INTERNAL_COLUMNS:
-                if c not in sheet_internal_order:
-                    sheet_internal_order.append(c)
-        except Exception:
-            sheet_internal_order = SHEET_INTERNAL_COLUMNS.copy()
+        # Build mapping from sheet headers to internal column names and ensure full column map
+        # sheet_header_row contains the human headers as present in the sheet
+        sheet_columns = list(sheet_header_row)
+        sheet_internal_map = []
+        for h in sheet_columns:
+            if h in header_mapping:
+                sheet_internal_map.append(header_mapping[h])
+            elif h in SHEET_INTERNAL_COLUMNS:
+                sheet_internal_map.append(h)
+            else:
+                sheet_internal_map.append(None)
+
+        # If the sheet lacks some canonical internal columns, append them at the end of our mapping
+        for c in SHEET_INTERNAL_COLUMNS:
+            if c not in sheet_internal_map:
+                sheet_columns.append(c)
+                sheet_internal_map.append(c)
+
+        _gs_debug(f"sheet_columns={sheet_columns}; sheet_internal_map={sheet_internal_map}")
 
         # If the sheet uses human headers, rename to internal names for comparison
         try:
@@ -2913,15 +2919,26 @@ def guardar_clientes_gsheet_append(df_nuevo: pd.DataFrame):
                 letters.append(chr(65 + rem))
             return "".join(reversed(letters))
 
-        # 1) Nuevos: append en lote
+        # Helper to build a full-value row aligned to sheet_columns using sheet_internal_map
+        def build_full_row_from_internal(internal_row: pd.Series) -> list:
+            out = []
+            for col_internal in sheet_internal_map:
+                if col_internal and col_internal in internal_row.index:
+                    out.append(internal_row.get(col_internal, ""))
+                else:
+                    out.append("")
+            return out
+
+        # 1) Nuevos: append en lote (crear filas completas alineadas a la hoja)
         nuevos_ids = [i for i in idx_nuevo.keys() if i not in idx_actual]
         if nuevos_ids:
             try:
-                cols_for_append = [c for c in sheet_internal_order if c in df_nuevo_idx.columns]
-                if not cols_for_append:
-                    cols_for_append = SHEET_INTERNAL_COLUMNS.copy()
-                rows_to_append = df_nuevo_idx.loc[df_nuevo_idx["id"].astype(str).isin(nuevos_ids), cols_for_append].values.tolist()
-                _gs_debug(f"Appending {len(rows_to_append)} rows; cols_for_append={cols_for_append}; sample={rows_to_append[:2]}")
+                rows_to_append = []
+                for _id in nuevos_ids:
+                    i_new = idx_nuevo[_id]
+                    internal_row = df_nuevo_idx.loc[i_new]
+                    rows_to_append.append(build_full_row_from_internal(internal_row))
+                _gs_debug(f"Appending {len(rows_to_append)} rows; sample={rows_to_append[:2]}")
                 if rows_to_append:
                     ws.append_rows(rows_to_append, value_input_option="RAW")
             except Exception as e:
@@ -2932,37 +2949,36 @@ def guardar_clientes_gsheet_append(df_nuevo: pd.DataFrame):
         comunes_ids = [i for i in idx_nuevo.keys() if i in idx_actual]
         if comunes_ids:
             updates = []
-            cols_for_update = [c for c in sheet_internal_order if c in SHEET_INTERNAL_COLUMNS]
-            if not cols_for_update:
-                cols_for_update = SHEET_INTERNAL_COLUMNS.copy()
-
             for _id in comunes_ids:
                 i_new = idx_nuevo[_id]
                 i_old = idx_actual[_id]
-                row_new = df_nuevo_idx.loc[i_new, cols_for_update]
-                row_old = df_act_idx.loc[i_old, cols_for_update]
+                internal_new = df_nuevo_idx.loc[i_new]
+                internal_old = df_act_idx.loc[i_old]
+                row_new_full = build_full_row_from_internal(internal_new)
+                row_old_full = build_full_row_from_internal(internal_old)
                 try:
-                    equal = row_new.equals(row_old)
+                    equal = row_new_full == row_old_full
                 except Exception:
                     equal = False
 
                 if not equal:
                     fila = i_old + 2  # +2 por encabezado (1-indexed)
-                    col_count = len(cols_for_update)
+                    col_count = len(sheet_columns)
                     col_letter = col_idx_to_letter(col_count)
                     rango = f"A{fila}:{col_letter}{fila}"
                     updates.append({
                         "range": rango,
-                        "values": [row_new.tolist()]
+                        "values": [row_new_full]
                     })
-                    _gs_debug(f"Queued update id={_id} fila={fila} rango={rango} values_sample={row_new.tolist()[:6]}")
+                    _gs_debug(f"Queued update id={_id} fila={fila} rango={rango} values_sample={row_new_full[:6]}")
 
             if updates:
                 try:
                     for i in range(0, len(updates), 100):
                         batch = updates[i:i+100]
                         ws.batch_update(batch, value_input_option="RAW")
-                except Exception:
+                except Exception as e:
+                    _gs_debug(f"Exception during batch_update: {e}")
                     pass
                     
     except Exception:
