@@ -2608,6 +2608,7 @@ SHEET_INTERNAL_COLUMNS = [
     "tipo_tramite",
     "producto",
     "fuente",
+    "fuente_base",
     "nombre",
     "telefono",
     "sucursal",
@@ -2636,6 +2637,7 @@ SHEET_HEADERS = [
     "Tipo de trámite",
     "Producto *",
     "Fuente",
+    "Base LUZWARE",
     "Nombre *",
     "Teléfono",
     "Sucursal *",
@@ -5050,6 +5052,10 @@ with tab_cli:
                     if st.session_state.get("form_new_asesor_toggle", False) and not st.session_state.get("form_nuevo_asesor", "").strip():
                         st.warning("Cuando seleccionas 'Nuevo asesor' debes ingresar el nombre y apellido del asesor.")
                     else:
+                        # If Fuente is LUZWARE, require the base name
+                        if fuente_n == "LUZWARE" and not fuente_base_n:
+                            st.warning("Cuando la Fuente es LUZWARE debes ingresar el nombre de la base (LUZWARE).")
+                            st.stop()
                         # usar ID proporcionado si existe y es único; si no, generar uno nuevo
                         provided = (id_n or "").strip()
                         if provided:
