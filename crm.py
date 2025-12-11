@@ -2699,13 +2699,23 @@ def cargar_clientes(force_reload: bool = False) -> pd.DataFrame:
                 if 'gs_first_load' not in st.session_state:
                     st.session_state['gs_first_load'] = True
                     show_once_success("gsheets_load", f"Datos cargados desde Google Sheets: {len(df)} registros")
-                
+
+            # Normalizar encabezados humanos del sheet a nombres internos (si aplica)
+            try:
+                mapping = dict(zip(SHEET_HEADERS, SHEET_INTERNAL_COLUMNS))
+                # si alguna cabecera humana está presente, renombrar las que coincidan
+                intersect = [h for h in df.columns if h in mapping]
+                if intersect:
+                    df = df.rename(columns={h: mapping[h] for h in intersect})
+            except Exception:
+                pass
+
             df = df.fillna("")
             for c in COLUMNS:
                 if c not in df.columns:
                     df[c] = ""
-            
-            result = df[COLUMNS].astype(str).fillna("")
+
+            result = df[[c for c in COLUMNS if c in df.columns]].astype(str).fillna("")
             
             # Actualizar caché
             _CLIENTES_CACHE = result.copy()
