@@ -2583,14 +2583,19 @@ def selectbox_multi(label: str, options: list[str], state_key: str) -> list[str]
 # ---------- Sidebar (filtros + acciones) ----------
 # Columnas esperadas en el CSV / DataFrame de clientes
 COLUMNS = [
-    "id","nombre","sucursal","asesor","fecha_ingreso","fecha_dispersion",
-    "estatus","monto_propuesta","monto_final","observaciones",
-    "score","telefono","correo","analista","fuente",
-    # Campos nuevos solicitados por el usuario
-    "tipo_tramite","capacidad","plazo","estado_civil","tipo_vivienda",
+    "id",
+    # Orden solicitado: Tipo de trámite, Producto, Fuente (+ fuente_base), Nombre, Teléfono,
+    # Capacidad, Monto que alcanza (monto_final), Monto solicitado (monto_propuesta), Plazo,
+    # Estado civil, Tipo de vivienda, Correo, Referencias, Antigüedad, Asesor
+    "tipo_tramite","producto","fuente","fuente_base",
+    "nombre","telefono","capacidad","monto_final","monto_propuesta","plazo",
+    "estado_civil","tipo_vivienda","correo",
     "ref1_nombre","ref1_telefono","ref1_parentesco",
     "ref2_nombre","ref2_telefono","ref2_parentesco",
-    "antiguedad_cuenta"
+    "antiguedad_cuenta","asesor",
+    "fecha_ingreso","fecha_dispersion",
+    "estatus","observaciones",
+    "score","analista"
 ]
 # Añadir columna 'producto' para soportar MEJORAVIT/INBURSA/MULTIVA
 COLUMNS.append("producto")
@@ -4906,8 +4911,10 @@ with tab_cli:
         with st.form("form_alta_cliente", clear_on_submit=True):
             c1, c2, c3 = st.columns(3)
             with c1:
+                # Primer bloque: Tipo de trámite, Producto, Fuente, Nombre, Teléfono
                 id_n = st.text_input("ID (opcional)", key="form_id")
                 tipo_tramite_n = st.selectbox("Tipo de trámite", ["Compra de deuda", "Renovacion", "Nuevo", "Adicional"], index=2)
+                producto_n = st.selectbox("Producto *", ["MEJORAVIT", "INBURSA", "MULTIVA"], index=0)
                 fuente_select = st.selectbox("Fuente", ["LUZWARE", "LEADS", "SEGUIMIENTO"], index=1)
                 fuente_base_input = ""
                 if fuente_select == "LUZWARE":
@@ -4915,22 +4922,6 @@ with tab_cli:
                 nombre_n = st.text_input("Nombre *")
                 telefono_n = st.text_input("Teléfono")
                 sucursal_n = st.selectbox("Sucursal *", SUCURSALES)
-                producto_n = st.selectbox("Producto *", ["MEJORAVIT", "INBURSA", "MULTIVA"], index=0)
-
-                # REPLACED: permitir elegir un asesor existente dentro del form,
-                # o usar el "Nuevo asesor" si el checkbox (fuera del form) está marcado.
-                raw_ases = [a for a in df_cli["asesor"].fillna("").unique() if str(a).strip()]
-                asesores_exist = sorted(list(dict.fromkeys([_norm_sin_asesor_label(a) for a in raw_ases])))
-                # Construir opciones sin duplicados (asegurando la etiqueta estándar "(Sin asesor)")
-                asesores_choices = list(dict.fromkeys(["(Sin asesor)"] + asesores_exist))
-                asesor_select = st.selectbox("Asesor", asesores_choices, key="form_ases_select")
-
-                if st.session_state.get("form_new_asesor_toggle", False):
-                    # si el usuario marcó "Nuevo asesor" usamos el texto ingresado (tiene prioridad)
-                    asesor_n = st.session_state.get("form_nuevo_asesor", "").strip()
-                else:
-                    # usar la selección del selectbox (o '' si eligió "(Sin asesor)")
-                    asesor_n = "" if asesor_select == "(Sin asesor)" else asesor_select
             with c2:
                 fecha_ingreso_n = st.date_input("Fecha ingreso", value=date.today())
                 capacidad_n = st.text_input("Capacidad")
@@ -4940,6 +4931,7 @@ with tab_cli:
                 estado_civil_n = st.selectbox("Estado civil", ["Casado","Soltero","Viudo","Divorciado"], index=1)
                 estatus_n = st.selectbox("Estatus", ESTATUS_OPCIONES, index=0)
             with c3:
+                # Último bloque: Vivienda, Correo, Referencias, Antigüedad y Asesor
                 tipo_vivienda_n = st.selectbox("Tipo de vivienda", ["Propia","Renta"], index=0)
                 correo_n = st.text_input("Correo")
                 # Referencia 1
@@ -4955,6 +4947,15 @@ with tab_cli:
                 contrasena_n = st.text_input("Contraseña")
                 fuente_n = str(fuente_select).strip().upper()
                 fuente_base_n = (fuente_base_input or "").strip().upper()
+                # Asesor como último campo
+                raw_ases = [a for a in df_cli["asesor"].fillna("").unique() if str(a).strip()]
+                asesores_exist = sorted(list(dict.fromkeys([_norm_sin_asesor_label(a) for a in raw_ases])))
+                asesores_choices = list(dict.fromkeys(["(Sin asesor)"] + asesores_exist))
+                asesor_select = st.selectbox("Asesor", asesores_choices, key="form_ases_select")
+                if st.session_state.get("form_new_asesor_toggle", False):
+                    asesor_n = st.session_state.get("form_nuevo_asesor", "").strip()
+                else:
+                    asesor_n = "" if asesor_select == "(Sin asesor)" else asesor_select
             obs_n = st.text_area("Observaciones")
 
             st.markdown("**Documentos:**")
