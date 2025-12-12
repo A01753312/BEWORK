@@ -5197,20 +5197,50 @@ with tab_cli:
     # Cargar datos frescos para la pestaña de clientes
     df_cli = cargar_y_corregir_clientes()
     
-    # Botón de diagnóstico temporal: muestra columnas y primeras filas desde Google Sheets
-    if st.button("(DEBUG) Mostrar columnas y primeras filas desde GSheet", key="dbg_show_sheet"):
-        try:
-            ws_dbg = _gs_open_worksheet(GSHEET_TAB, force_reload=True)
-            if ws_dbg is None:
-                st.error("No se pudo conectar a Google Sheets (credenciales).")
-            else:
-                df_dbg = _sheet_to_df(ws_dbg)
-                st.markdown("**Columnas detectadas en Google Sheets:**")
-                st.write(list(df_dbg.columns))
-                st.markdown("**Primeras filas:**")
-                st.dataframe(df_dbg.head(10))
-        except Exception as e:
-            st.error(f"Error leyendo sheet para debug: {e}")
+    # Botón para refrescar la lista local desde Google Sheets (forzar recarga)
+    colr1, colr2 = st.columns([1, 4])
+    with colr1:
+        if st.button("🔁 Refrescar desde Google Sheets", key="refresh_from_gs"):
+            try:
+                df_new = cargar_clientes(force_reload=True)
+                if df_new is None or df_new.empty:
+                    st.warning("No se encontraron registros en Google Sheets al recargar.")
+                else:
+                    # Actualizar cache y archivo local para reflejar exactamente la hoja
+                    try:
+                        df_new.to_csv(CLIENTES_CSV, index=False, encoding="utf-8")
+                    except Exception:
+                        pass
+                    try:
+                        engine = None
+                        try:
+                            import xlsxwriter
+                            engine = "xlsxwriter"
+                        except Exception:
+                            try:
+                                import openpyxl
+                                engine = "openpyxl"
+                            except Exception:
+                                engine = None
+                        if engine:
+                            with pd.ExcelWriter(CLIENTES_XLSX, engine=engine) as writer:
+                                df_new.to_excel(writer, index=False, sheet_name="Clientes")
+                    except Exception:
+                        pass
+                    # actualizar caché interno
+                    try:
+                        _CLIENTES_CACHE = df_new.copy()
+                        import time
+                        _CLIENTES_CACHE_TIME = time.time()
+                    except Exception:
+                        pass
+                    st.success(f"Se recargaron {len(df_new)} registros desde Google Sheets y se actualizó el CSV local.")
+                    # reemplazar df_cli para el render actual
+                    df_cli = df_new
+            except Exception as e:
+                st.error(f"Error recargando desde Google Sheets: {e}")
+    with colr2:
+        st.write("")
 
     st.subheader("➕ Agregar cliente")
     with st.expander("Formulario de alta", expanded=False):  # UI más limpia
