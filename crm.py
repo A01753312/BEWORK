@@ -5074,6 +5074,9 @@ with tab_cli:
     st.subheader("➕ Agregar cliente")
     with st.expander("Formulario de alta", expanded=False):  # UI más limpia
 
+        # Producto seleccionado fuera del form para permitir actualizar dinámicamente el listado de estatus
+        producto_n = st.selectbox("Producto *", ["MEJORAVIT", "INBURSA", "MULTIVA"], index=0, key="form_producto")
+
         # --- NEW: eliminar el selectbox "Asesor" (se pide quitar el "botoncito").
         # Mantener sólo el checkbox para crear un nuevo asesor y el input para su nombre.
         st.checkbox("Nuevo asesor (marca para escribir nombre y apellido)", key="form_new_asesor_toggle", help="Marca para ingresar manualmente el nombre y apellido del asesor")
@@ -5087,7 +5090,7 @@ with tab_cli:
                 # Primer bloque: Tipo de trámite, Producto, Fuente, Nombre, Teléfono
                 id_n = st.text_input("ID (opcional)", key="form_id")
                 tipo_tramite_n = st.selectbox("Tipo de trámite", ["Compra de deuda", "Renovacion", "Nuevo", "Adicional"], index=2)
-                producto_n = st.selectbox("Producto *", ["MEJORAVIT", "INBURSA", "MULTIVA"], index=0)
+                # producto_n -- definido arriba fuera del form to enable dynamic estatus
                 fuente_select = st.selectbox("Fuente", ["LUZWARE", "LEADS", "SEGUIMIENTO"], index=1)
                 fuente_base_input = ""
                 if fuente_select == "LUZWARE":
