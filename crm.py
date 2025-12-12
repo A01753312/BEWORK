@@ -5232,6 +5232,14 @@ with tab_cli:
                         _CLIENTES_CACHE = df_new.copy()
                         import time
                         _CLIENTES_CACHE_TIME = time.time()
+                        # activar modo de vista que respeta el layout de la hoja
+                        try:
+                            st.session_state["use_sheet_layout"] = True
+                            # columnas internas disponibles en el orden solicitado
+                            st.session_state["sheet_columns"] = [c for c in SHEET_INTERNAL_COLUMNS if c in df_new.columns]
+                            st.session_state["sheet_header_map"] = dict(zip(SHEET_INTERNAL_COLUMNS, SHEET_HEADERS))
+                        except Exception:
+                            pass
                     except Exception:
                         pass
                     st.success(f"Se recargaron {len(df_new)} registros desde Google Sheets y se actualizó el CSV local.")
@@ -5430,31 +5438,66 @@ with tab_cli:
     if df_clientes_mostrar.empty:
         st.info("No hay clientes con los filtros seleccionados.")
     else:
-        colcfg = {
-            "id": st.column_config.TextColumn("ID", disabled=True),
-            "nombre": st.column_config.TextColumn("Nombre"),
-            "producto": st.column_config.SelectboxColumn("Producto", options=["", "MEJORAVIT", "INBURSA", "MULTIVA"], required=False),
-            "tipo_tramite": st.column_config.SelectboxColumn("Tipo trámite", options=["","Compra de deuda","Renovacion","Nuevo","Adicional"], required=False),
-            "capacidad": st.column_config.TextColumn("Capacidad"),
-            "plazo": st.column_config.SelectboxColumn("Plazo", options=["",12,24,36,28,54,60], required=False),
-            "estado_civil": st.column_config.SelectboxColumn("Estado civil", options=["","Casado","Soltero","Viudo","Divorciado"], required=False),
-            "tipo_vivienda": st.column_config.SelectboxColumn("Tipo vivienda", options=["","Propia","Renta"], required=False),
-            "ref1_nombre": st.column_config.TextColumn("Ref1 - Nombre"),
-            "ref1_telefono": st.column_config.TextColumn("Ref1 - Teléfono"),
-            "ref1_parentesco": st.column_config.SelectboxColumn("Ref1 - Parentesco", options=["","Hijo","Espos@","Amig@","Familiar"], required=False),
-            "ref2_nombre": st.column_config.TextColumn("Ref2 - Nombre"),
-            "ref2_telefono": st.column_config.TextColumn("Ref2 - Teléfono"),
-            "ref2_parentesco": st.column_config.SelectboxColumn("Ref2 - Parentesco", options=["","Hijo","Espos@","Amig@","Familiar"], required=False),
-            "antiguedad_cuenta": st.column_config.TextColumn("Antigüedad cuenta"),
-            "fuente": st.column_config.SelectboxColumn("Fuente", options=["","LUZWARE","LEADS","SEGUIMIENTO"], required=False),
-            "fuente_base": st.column_config.TextColumn("Base LUZWARE"),
-            "usuario_cipre": st.column_config.TextColumn("Usuario Cipre"),
-            "contrasena": st.column_config.TextColumn("Contraseña"),
-            "monto_propuesta": st.column_config.TextColumn("Monto solicitado"),
-            "sucursal": st.column_config.SelectboxColumn("Sucursal", options=[""]+SUCURSALES, required=False),
-            "asesor": st.column_config.TextColumn("Asesor"),
-            "estatus": st.column_config.SelectboxColumn("Estatus", options=ESTATUS_OPCIONES, required=True)
-        }
+        # Construir column_config; si el usuario refrescó desde Sheets, respetar el layout de la hoja
+        if st.session_state.get("use_sheet_layout") and st.session_state.get("sheet_columns"):
+            sheet_cols = st.session_state.get("sheet_columns")
+            header_map = st.session_state.get("sheet_header_map", {})
+            colcfg = {}
+            for col in sheet_cols:
+                label = header_map.get(col, col)
+                # elegir tipo según columna conocida
+                if col == "id":
+                    colcfg[col] = st.column_config.TextColumn(label, disabled=True)
+                elif col == "producto":
+                    colcfg[col] = st.column_config.SelectboxColumn(label, options=["", "MEJORAVIT", "INBURSA", "MULTIVA"], required=False)
+                elif col == "tipo_tramite":
+                    colcfg[col] = st.column_config.SelectboxColumn(label, options=["","Compra de deuda","Renovacion","Nuevo","Adicional"], required=False)
+                elif col == "plazo":
+                    colcfg[col] = st.column_config.SelectboxColumn(label, options=["",12,24,36,28,54,60], required=False)
+                elif col in ("tipo_vivienda",):
+                    colcfg[col] = st.column_config.SelectboxColumn(label, options=["","Propia","Renta"], required=False)
+                elif col in ("ref1_parentesco", "ref2_parentesco"):
+                    colcfg[col] = st.column_config.SelectboxColumn(label, options=["","Hijo","Espos@","Amig@","Familiar"], required=False)
+                elif col == "fuente":
+                    colcfg[col] = st.column_config.SelectboxColumn(label, options=["","LUZWARE","LEADS","SEGUIMIENTO"], required=False)
+                elif col == "sucursal":
+                    colcfg[col] = st.column_config.SelectboxColumn(label, options=[""]+SUCURSALES, required=False)
+                elif col == "estatus":
+                    # mostrar opciones globales (la selección de estatus por producto se aplica al crear/editar)
+                    colcfg[col] = st.column_config.SelectboxColumn(label, options=ESTATUS_OPCIONES, required=False)
+                else:
+                    colcfg[col] = st.column_config.TextColumn(label)
+            # reordenar df_clientes_mostrar según sheet_cols
+            try:
+                df_clientes_mostrar = df_clientes_mostrar[[c for c in sheet_cols if c in df_clientes_mostrar.columns]]
+            except Exception:
+                pass
+        else:
+            colcfg = {
+                "id": st.column_config.TextColumn("ID", disabled=True),
+                "nombre": st.column_config.TextColumn("Nombre"),
+                "producto": st.column_config.SelectboxColumn("Producto", options=["", "MEJORAVIT", "INBURSA", "MULTIVA"], required=False),
+                "tipo_tramite": st.column_config.SelectboxColumn("Tipo trámite", options=["","Compra de deuda","Renovacion","Nuevo","Adicional"], required=False),
+                "capacidad": st.column_config.TextColumn("Capacidad"),
+                "plazo": st.column_config.SelectboxColumn("Plazo", options=["",12,24,36,28,54,60], required=False),
+                "estado_civil": st.column_config.SelectboxColumn("Estado civil", options=["","Casado","Soltero","Viudo","Divorciado"], required=False),
+                "tipo_vivienda": st.column_config.SelectboxColumn("Tipo vivienda", options=["","Propia","Renta"], required=False),
+                "ref1_nombre": st.column_config.TextColumn("Ref1 - Nombre"),
+                "ref1_telefono": st.column_config.TextColumn("Ref1 - Teléfono"),
+                "ref1_parentesco": st.column_config.SelectboxColumn("Ref1 - Parentesco", options=["","Hijo","Espos@","Amig@","Familiar"], required=False),
+                "ref2_nombre": st.column_config.TextColumn("Ref2 - Nombre"),
+                "ref2_telefono": st.column_config.TextColumn("Ref2 - Teléfono"),
+                "ref2_parentesco": st.column_config.SelectboxColumn("Ref2 - Parentesco", options=["","Hijo","Espos@","Amig@","Familiar"], required=False),
+                "antiguedad_cuenta": st.column_config.TextColumn("Antigüedad cuenta"),
+                "fuente": st.column_config.SelectboxColumn("Fuente", options=["","LUZWARE","LEADS","SEGUIMIENTO"], required=False),
+                "fuente_base": st.column_config.TextColumn("Base LUZWARE"),
+                "usuario_cipre": st.column_config.TextColumn("Usuario Cipre"),
+                "contrasena": st.column_config.TextColumn("Contraseña"),
+                "monto_propuesta": st.column_config.TextColumn("Monto solicitado"),
+                "sucursal": st.column_config.SelectboxColumn("Sucursal", options=[""]+SUCURSALES, required=False),
+                "asesor": st.column_config.TextColumn("Asesor"),
+                "estatus": st.column_config.SelectboxColumn("Estatus", options=ESTATUS_OPCIONES, required=True)
+            }
 
         df_clientes_mostrar["sucursal"] = df_clientes_mostrar["sucursal"].where(df_clientes_mostrar["sucursal"].isin(SUCURSALES), "")
         # antes de mostrar el editor, ordenar df_clientes_mostrar por fechas asc
