@@ -1696,12 +1696,21 @@ def load_catalog_from_gsheet(sheet_tab: str, default_values: list = None, force_
     
     # Determinar qué catálogo es basándose en sheet_tab
     catalog_name = None
-    if "sucursal" in sheet_tab.lower():
+    st_low = sheet_tab.lower()
+    # Preferir nombres específicos para pestañas de estatus por producto
+    if "estatusinbursa" in st_low:
+        catalog_name = "estatusinbursa"
+    elif "estatusmejoravit" in st_low:
+        catalog_name = "estatusmejoravit"
+    elif "estatusmultiva" in st_low:
+        catalog_name = "estatusmultiva"
+    elif "sucursal" in st_low:
         catalog_name = "sucursales"
-    elif "estatus" in sheet_tab.lower() or "status" in sheet_tab.lower():
-        catalog_name = "estatus"
-    elif "asesor" in sheet_tab.lower():
+    elif "asesor" in st_low:
         catalog_name = "asesores"
+    elif "estatus" in st_low or "status" in st_low:
+        # global 'estatus' catalog
+        catalog_name = "estatus"
     
     # Si tenemos el nombre del catálogo, usar caché
     if catalog_name:
