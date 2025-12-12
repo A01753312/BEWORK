@@ -2734,11 +2734,28 @@ def cargar_clientes(force_reload: bool = False) -> pd.DataFrame:
 
             # Normalizar encabezados humanos del sheet a nombres internos (si aplica)
             try:
-                mapping = dict(zip(SHEET_HEADERS, SHEET_INTERNAL_COLUMNS))
-                # si alguna cabecera humana está presente, renombrar las que coincidan
-                intersect = [h for h in df.columns if h in mapping]
-                if intersect:
-                    df = df.rename(columns={h: mapping[h] for h in intersect})
+                def _col_key(s: str) -> str:
+                    return _norm_key(str(s).strip())
+
+                header_map = { _col_key(h): internal for h, internal in zip(SHEET_HEADERS, SHEET_INTERNAL_COLUMNS) }
+                rename_map = {}
+                for orig in list(df.columns):
+                    k = _col_key(orig)
+                    if k in header_map:
+                        rename_map[orig] = header_map[k]
+
+                if rename_map:
+                    df = df.rename(columns=rename_map)
+            except Exception:
+                pass
+
+            # Registro silencioso para diagnóstico de encabezados/filas (no visible en UI)
+            try:
+                logp = DATA_DIR / "gs_debug.log"
+                with open(logp, "a", encoding="utf-8") as fh:
+                    fh.write(f"{datetime.now().isoformat()} - cargar_clientes: columns={list(df.columns)}\n")
+                    sample = df.head(3).to_dict(orient='records')
+                    fh.write(f"{datetime.now().isoformat()} - sample={sample}\n")
             except Exception:
                 pass
 
