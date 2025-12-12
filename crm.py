@@ -2749,6 +2749,60 @@ def cargar_clientes(force_reload: bool = False) -> pd.DataFrame:
             except Exception:
                 pass
 
+            # Si después del renombrado no tenemos columna 'estatus' con datos,
+            # intentar detectar la columna que contiene valores de estatus comparando
+            # con los catálogos conocidos para cada producto (o globales).
+            try:
+                import numpy as _np
+                def _norm_list(vals):
+                    return {_norm_key(str(v)) for v in vals if str(v).strip()}
+
+                # construir catálogo combinado normalizado
+                est_all = []
+                try:
+                    est_all.extend(ESTATUS_OPCIONES)
+                except Exception:
+                    pass
+                try:
+                    est_all.extend(ESTATUS_INBURSA_OPCIONES)
+                except Exception:
+                    pass
+                try:
+                    est_all.extend(ESTATUS_MULTIVA_OPCIONES)
+                except Exception:
+                    pass
+                try:
+                    est_all.extend(ESTATUS_MEJORAVIT_OPCIONES)
+                except Exception:
+                    pass
+
+                est_norm = {_norm_key(x) for x in est_all if str(x).strip()}
+
+                need_est_col = True
+                if "estatus" in df.columns:
+                    # si existe pero tiene datos vacíos, aún podemos intentar detectar mejor
+                    try:
+                        if df["estatus"].astype(str).str.strip().replace("", _np.nan).notna().any():
+                            need_est_col = False
+                    except Exception:
+                        pass
+
+                if need_est_col:
+                    # revisar cada columna y comparar sus valores normalizados con el catálogo
+                    for col in list(df.columns):
+                        try:
+                            sample_vals = df[col].astype(str).head(200).tolist()
+                            vals_norm = _norm_list(sample_vals)
+                            if vals_norm and (vals_norm & est_norm):
+                                # renombrar esta columna a 'estatus' si aún no existe
+                                if "estatus" not in df.columns:
+                                    df = df.rename(columns={col: "estatus"})
+                                    break
+                        except Exception:
+                            continue
+            except Exception:
+                pass
+
             # Registro silencioso para diagnóstico de encabezados/filas (no visible en UI)
             try:
                 logp = DATA_DIR / "gs_debug.log"
@@ -2763,6 +2817,52 @@ def cargar_clientes(force_reload: bool = False) -> pd.DataFrame:
             for c in COLUMNS:
                 if c not in df.columns:
                     df[c] = ""
+
+            # Si la columna 'estatus' existe pero está vacía, intentar rescatarla
+            try:
+                if "estatus" in df.columns:
+                    try:
+                        est_empty = df["estatus"].astype(str).str.strip().replace("", _np.nan).isna().all()
+                    except Exception:
+                        est_empty = False
+                else:
+                    est_empty = True
+
+                if est_empty:
+                    # buscar la columna con mayor proporción de valores que coinciden con catálogos de estatus
+                    best_col = None
+                    best_ratio = 0.0
+                    for col in df.columns:
+                        if col == "estatus":
+                            continue
+                        try:
+                            vals = df[col].astype(str).str.strip()
+                            non_empty = vals[vals != ""]
+                            if len(non_empty) == 0:
+                                continue
+                            vals_norm = {_norm_key(v) for v in non_empty[:200].tolist()}
+                            match_count = len([v for v in vals_norm if v in est_norm])
+                            ratio = match_count / max(1, len(vals_norm))
+                            if ratio > best_ratio:
+                                best_ratio = ratio
+                                best_col = col
+                        except Exception:
+                            continue
+
+                    if best_col and best_ratio >= 0.30:
+                        # Assign values and log
+                        try:
+                            df["estatus"] = df[best_col].astype(str)
+                            try:
+                                logp = DATA_DIR / "gs_debug.log"
+                                with open(logp, "a", encoding="utf-8") as fh:
+                                    fh.write(f"{datetime.now().isoformat()} - cargar_clientes: rescued 'estatus' from column={best_col} ratio={best_ratio}\n")
+                            except Exception:
+                                pass
+                        except Exception:
+                            pass
+            except Exception:
+                pass
 
             result = df[[c for c in COLUMNS if c in df.columns]].astype(str).fillna("")
             
@@ -5097,6 +5197,21 @@ with tab_cli:
     # Cargar datos frescos para la pestaña de clientes
     df_cli = cargar_y_corregir_clientes()
     
+    # Botón de diagnóstico temporal: muestra columnas y primeras filas desde Google Sheets
+    if st.button("(DEBUG) Mostrar columnas y primeras filas desde GSheet", key="dbg_show_sheet"):
+        try:
+            ws_dbg = _gs_open_worksheet(GSHEET_TAB, force_reload=True)
+            if ws_dbg is None:
+                st.error("No se pudo conectar a Google Sheets (credenciales).")
+            else:
+                df_dbg = _sheet_to_df(ws_dbg)
+                st.markdown("**Columnas detectadas en Google Sheets:**")
+                st.write(list(df_dbg.columns))
+                st.markdown("**Primeras filas:**")
+                st.dataframe(df_dbg.head(10))
+        except Exception as e:
+            st.error(f"Error leyendo sheet para debug: {e}")
+
     st.subheader("➕ Agregar cliente")
     with st.expander("Formulario de alta", expanded=False):  # UI más limpia
 
