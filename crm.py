@@ -5122,6 +5122,10 @@ with tab_cli:
                 if st.session_state.get("debug_estatus_change", False):
                     st.markdown(f"**DEBUG** producto=`{producto_n}` prod_upper=`{prod_upper}` key=`{estatus_key}`")
                     st.markdown(f"**DEBUG** opciones: {estatus_choices}")
+                    # Mostrar los catálogos en memoria para verificar si fueron mezclados
+                    st.markdown(f"- ESTATUS_INBURSA_OPCIONES: {ESTATUS_INBURSA_OPCIONES}")
+                    st.markdown(f"- ESTATUS_MULTIVA_OPCIONES: {ESTATUS_MULTIVA_OPCIONES}")
+                    st.markdown(f"- ESTATUS_MEJORAVIT_OPCIONES: {ESTATUS_MEJORAVIT_OPCIONES}")
             with c3:
                 # Último bloque: Vivienda, Correo, Referencias, Antigüedad y Asesor
                 tipo_vivienda_n = st.selectbox("Tipo de vivienda", ["Propia","Renta"], index=0)
