@@ -5115,7 +5115,9 @@ with tab_cli:
                     estatus_choices = ESTATUS_MEJORAVIT_OPCIONES or ESTATUS_OPCIONES
                 else:
                     estatus_choices = ESTATUS_OPCIONES
-                estatus_n = st.selectbox("Estatus", estatus_choices, index=0)
+                # Use a widget key that includes the product so Streamlit recreates the widget when product changes
+                estatus_key = f"form_estatus_{prod_upper}"
+                estatus_n = st.selectbox("Estatus", estatus_choices, index=0, key=estatus_key)
             with c3:
                 # Último bloque: Vivienda, Correo, Referencias, Antigüedad y Asesor
                 tipo_vivienda_n = st.selectbox("Tipo de vivienda", ["Propia","Renta"], index=0)
