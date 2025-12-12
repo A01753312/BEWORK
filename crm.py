@@ -1796,9 +1796,32 @@ def load_catalogs_from_gsheet():
 ESTATUS_OPCIONES = load_estatus()
 
 # Cargar catálogos específicos por producto (si existen) o usar defaults
-_default_est_Inbursa = ["Tramite cargado","Pendiente firma","Pendiente Autorización","Credito Autorizado","Rechazado"]
-_default_est_Multiva = ["Tramite enviado","Pendiente solicitud","Pendiente contrato","Ganada","Rechazada"]
-_default_est_Mejoravit = ["Enviado", "Pendiente Acuse", "Pendiente Autorización", " Pendiente Firma", "Pendiente Dispersión","Credito Autorizado", "Rechazado", "En pausa por algun tramite"]
+_default_est_Inbursa = [
+    "Tramite cargado",
+    "Pendiente firma",
+    "Pendiente autorizacion",
+    "Credito autorizado",
+    "Rechazado",
+]
+
+_default_est_Multiva = [
+    "Tramite enviado",
+    "Pendiente solicitud y foto",
+    "Pendiente contrato",
+    "Ganada",
+    "Rechazada",
+]
+
+_default_est_Mejoravit = [
+    "Enviado",
+    "Pendiente Acuse",
+    "Pendiente autorizacion",
+    "Pendiente firma",
+    "Pendiente Dispersión",
+    "Credito autorizado",
+    "Rechazado",
+    "En pausa por algun tramite",
+]
 ESTATUS_INBURSA_OPCIONES = _load_estatus_specific(GSHEET_ESTATUSINBURSA_TAB, ESTATUSINBURSA_FILE, _default_est_Inbursa)
 ESTATUS_MULTIVA_OPCIONES = _load_estatus_specific(GSHEET_ESTATUSMULTIVA_TAB, ESTATUSMULTIVA_FILE, _default_est_Multiva)
 ESTATUS_MEJORAVIT_OPCIONES = _load_estatus_specific(GSHEET_ESTATUSMEJORAVIT_TAB, ESTATUSMEJORAVIT_FILE, _default_est_Mejoravit)
@@ -5079,7 +5102,17 @@ with tab_cli:
                 # guardar Monto Solicitado en columna existente 'monto_propuesta'
                 plazo_n = st.selectbox("Plazo (meses)", [12,24,36,28,54,60], index=0)
                 estado_civil_n = st.selectbox("Estado civil", ["Casado","Soltero","Viudo","Divorciado"], index=1)
-                estatus_n = st.selectbox("Estatus", ESTATUS_OPCIONES, index=0)
+                # Mostrar estatus según producto seleccionado
+                prod_upper = (producto_n or "").strip().upper()
+                if prod_upper == "INBURSA":
+                    estatus_choices = ESTATUS_INBURSA_OPCIONES or ESTATUS_OPCIONES
+                elif prod_upper == "MULTIVA":
+                    estatus_choices = ESTATUS_MULTIVA_OPCIONES or ESTATUS_OPCIONES
+                elif prod_upper == "MEJORAVIT":
+                    estatus_choices = ESTATUS_MEJORAVIT_OPCIONES or ESTATUS_OPCIONES
+                else:
+                    estatus_choices = ESTATUS_OPCIONES
+                estatus_n = st.selectbox("Estatus", estatus_choices, index=0)
             with c3:
                 # Último bloque: Vivienda, Correo, Referencias, Antigüedad y Asesor
                 tipo_vivienda_n = st.selectbox("Tipo de vivienda", ["Propia","Renta"], index=0)
