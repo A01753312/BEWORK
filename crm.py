@@ -5088,7 +5088,6 @@ with tab_cli:
 
         # --- NEW: eliminar el selectbox "Asesor" (se pide quitar el "botoncito").
         # Mantener sólo el checkbox para crear un nuevo asesor y el input para su nombre.
-        st.checkbox("Mostrar debug de estatus (solo para diagnóstico)", key="debug_estatus_change")
         st.checkbox("Nuevo asesor (marca para escribir nombre y apellido)", key="form_new_asesor_toggle", help="Marca para ingresar manualmente el nombre y apellido del asesor")
         if st.session_state.get("form_new_asesor_toggle", False):
             st.text_input("Nombre y apellido del nuevo asesor", placeholder="Ej. Juan Pérez", key="form_nuevo_asesor")
@@ -5128,13 +5127,7 @@ with tab_cli:
                 # Use a widget key that includes the product so Streamlit recreates the widget when product changes
                 estatus_key = f"form_estatus_{prod_upper}"
                 estatus_n = st.selectbox("Estatus", estatus_choices, index=0, key=estatus_key)
-                if st.session_state.get("debug_estatus_change", False):
-                    st.markdown(f"**DEBUG** producto=`{producto_n}` prod_upper=`{prod_upper}` key=`{estatus_key}`")
-                    st.markdown(f"**DEBUG** opciones: {estatus_choices}")
-                    # Mostrar los catálogos en memoria para verificar si fueron mezclados
-                    st.markdown(f"- ESTATUS_INBURSA_OPCIONES: {ESTATUS_INBURSA_OPCIONES}")
-                    st.markdown(f"- ESTATUS_MULTIVA_OPCIONES: {ESTATUS_MULTIVA_OPCIONES}")
-                    st.markdown(f"- ESTATUS_MEJORAVIT_OPCIONES: {ESTATUS_MEJORAVIT_OPCIONES}")
+                pass
             with c3:
                 # Último bloque: Vivienda, Correo, Referencias, Antigüedad y Asesor
                 tipo_vivienda_n = st.selectbox("Tipo de vivienda", ["Propia","Renta"], index=0)
