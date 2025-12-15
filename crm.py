@@ -4731,11 +4731,12 @@ with tab_dash:
         
         st.markdown("---")
         
-        # �🔄 TABS SECUNDARIAS PARA ANÁLISIS DETALLADO
-        dash_tab1, dash_tab2, dash_tab3 = st.tabs([
+        # 🔄 TABS SECUNDARIAS PARA ANÁLISIS DETALLADO
+        dash_tab1, dash_tab2, dash_tab3, dash_tab4 = st.tabs([
             "📊 Por Estatus", 
             "📅 Por Fecha", 
-            "🏢 Por Sucursal/Asesor"
+            "🏢 Por Sucursal/Asesor",
+            "💼 Análisis de Ventas"
         ])
         
         # 📊 TAB 1: POR ESTATUS
@@ -5132,6 +5133,258 @@ with tab_dash:
                         )
                         
                         st.altair_chart(chart_fuente, use_container_width=True)
+        
+        # 💼 TAB 4: ANÁLISIS DE VENTAS
+        with dash_tab4:
+            st.subheader("📈 Análisis de Ventas y Productos")
+            
+            # Sub-tabs para diferentes vistas de ventas
+            ventas_tab1, ventas_tab2, ventas_tab3 = st.tabs([
+                "📦 Por Producto", 
+                "💰 Resumen Financiero",
+                "📊 Ingresos por Canal"
+            ])
+            
+            # SUB-TAB: POR PRODUCTO
+            with ventas_tab1:
+                st.markdown("#### Análisis por Producto")
+                
+                # Contar clientes por producto
+                producto_counts = df_cli["producto"].fillna("(Sin producto)").value_counts()
+                producto_counts = producto_counts[producto_counts > 0]
+                
+                if producto_counts.empty:
+                    st.info("No hay datos de productos para mostrar.")
+                else:
+                    producto_df = producto_counts.reset_index()
+                    producto_df.columns = ["producto", "clientes"]
+                    producto_df["porcentaje"] = (producto_df["clientes"] / len(df_cli) * 100).round(1)
+                    
+                    # Calcular montos por producto
+                    df_temp_prod = df_cli.copy()
+                    def limpiar_monto_local(m):
+                        if pd.isna(m) or str(m).strip() == "": return 0.0
+                        try:
+                            import re
+                            return float(re.sub(r'[,$\s]', '', str(m)))
+                        except: return 0.0
+                    df_temp_prod["monto_num"] = df_temp_prod["monto_propuesta"].apply(limpiar_monto_local)
+                    
+                    montos_por_producto = df_temp_prod.groupby("producto")["monto_num"].agg([
+                        ('total', 'sum'),
+                        ('promedio', 'mean'),
+                        ('dispersados', lambda x: df_temp_prod.loc[x.index][df_temp_prod.loc[x.index]["estatus"] == "DISPERSADO"]["monto_num"].sum())
+                    ]).reset_index()
+                    
+                    # Merge con conteos
+                    producto_completo = producto_df.merge(montos_por_producto, on="producto", how="left")
+                    producto_completo = producto_completo.fillna(0)
+                    
+                    # Mostrar en dos columnas
+                    col1, col2 = st.columns(2)
+                    
+                    with col1:
+                        st.markdown("**📊 Clientes por Producto**")
+                        # Gráfico de barras
+                        chart_prod = alt.Chart(producto_df).mark_bar(
+                            cornerRadiusTopRight=8,
+                            cornerRadiusBottomRight=8
+                        ).encode(
+                            x=alt.X("clientes:Q", axis=alt.Axis(title="Número de Clientes")),
+                            y=alt.Y("producto:N", sort="-x", axis=alt.Axis(title="")),
+                            color=alt.Color("producto:N", scale=alt.Scale(scheme="tableau10"), legend=None),
+                            tooltip=[
+                                alt.Tooltip("producto:N", title="Producto"),
+                                alt.Tooltip("clientes:Q", title="Clientes"),
+                                alt.Tooltip("porcentaje:Q", title="% del Total", format=".1f")
+                            ]
+                        ).properties(height=200)
+                        
+                        st.altair_chart(chart_prod, use_container_width=True)
+                        
+                        # Tabla con detalles
+                        st.markdown("**Detalle:**")
+                        for _, row in producto_df.iterrows():
+                            st.metric(
+                                label=row["producto"],
+                                value=f"{int(row['clientes'])} clientes",
+                                delta=f"{row['porcentaje']}% del total"
+                            )
+                    
+                    with col2:
+                        st.markdown("**💵 Ventas por Producto**")
+                        
+                        # Gráfico de montos
+                        chart_montos = alt.Chart(producto_completo).mark_bar(
+                            cornerRadiusTopRight=8,
+                            cornerRadiusBottomRight=8,
+                            color="#4DA8FF"
+                        ).encode(
+                            x=alt.X("total:Q", axis=alt.Axis(title="Monto Total ($)", format="$,.0f")),
+                            y=alt.Y("producto:N", sort="-x", axis=alt.Axis(title="")),
+                            tooltip=[
+                                alt.Tooltip("producto:N", title="Producto"),
+                                alt.Tooltip("total:Q", title="Total Propuesto", format="$,.0f"),
+                                alt.Tooltip("promedio:Q", title="Promedio", format="$,.0f"),
+                                alt.Tooltip("dispersados:Q", title="Dispersado", format="$,.0f")
+                            ]
+                        ).properties(height=200)
+                        
+                        st.altair_chart(chart_montos, use_container_width=True)
+                        
+                        # Métricas financieras por producto
+                        st.markdown("**Detalle Financiero:**")
+                        for _, row in producto_completo.iterrows():
+                            with st.expander(f"💼 {row['producto']}", expanded=False):
+                                col_a, col_b, col_c = st.columns(3)
+                                with col_a:
+                                    st.metric("Total Propuesto", formatear_monto(row['total']))
+                                with col_b:
+                                    st.metric("Promedio", formatear_monto(row['promedio']))
+                                with col_c:
+                                    st.metric("Dispersado", formatear_monto(row['dispersados']))
+            
+            # SUB-TAB: RESUMEN FINANCIERO
+            with ventas_tab2:
+                st.markdown("#### 💰 Resumen Financiero Total")
+                
+                # Calcular análisis financiero completo
+                analisis = calcular_analisis_financiero(df_cli)
+                
+                # KPIs principales financieros
+                col1, col2, col3, col4 = st.columns(4)
+                
+                with col1:
+                    st.metric(
+                        "💵 Total Propuesto",
+                        formatear_monto(analisis['total_propuesto']),
+                        help="Suma de todos los montos propuestos"
+                    )
+                
+                with col2:
+                    st.metric(
+                        "✅ Total Dispersado",
+                        formatear_monto(analisis['total_dispersado']),
+                        help="Suma de montos realmente dispersados"
+                    )
+                
+                with col3:
+                    tasa_conversion = (analisis['total_dispersado'] / analisis['total_propuesto'] * 100) if analisis['total_propuesto'] > 0 else 0
+                    st.metric(
+                        "📊 Tasa de Conversión",
+                        f"{tasa_conversion:.1f}%",
+                        help="Dispersado / Propuesto"
+                    )
+                
+                with col4:
+                    st.metric(
+                        "📈 Promedio por Cliente",
+                        formatear_monto(analisis['promedio_propuesto']),
+                        help="Monto promedio propuesto por cliente"
+                    )
+                
+                st.markdown("---")
+                
+                # Gráfico comparativo
+                st.markdown("**Comparación: Propuesto vs Dispersado**")
+                
+                comparacion_data = pd.DataFrame({
+                    'Categoría': ['Total Propuesto', 'Total Dispersado', 'Pendiente'],
+                    'Monto': [
+                        analisis['total_propuesto'],
+                        analisis['total_dispersado'],
+                        analisis['total_propuesto'] - analisis['total_dispersado']
+                    ]
+                })
+                
+                chart_comp = alt.Chart(comparacion_data).mark_bar().encode(
+                    x=alt.X('Monto:Q', axis=alt.Axis(title='Monto ($)', format='$,.0f')),
+                    y=alt.Y('Categoría:N', axis=alt.Axis(title='')),
+                    color=alt.Color('Categoría:N', 
+                                   scale=alt.Scale(domain=['Total Propuesto', 'Total Dispersado', 'Pendiente'],
+                                                 range=['#4DA8FF', '#4CAF50', '#FFC107'])),
+                    tooltip=[
+                        alt.Tooltip('Categoría:N'),
+                        alt.Tooltip('Monto:Q', title='Monto', format='$,.0f')
+                    ]
+                ).properties(height=200)
+                
+                st.altair_chart(chart_comp, use_container_width=True)
+            
+            # SUB-TAB: INGRESOS POR CANAL
+            with ventas_tab3:
+                st.markdown("#### 📊 Análisis de Ingresos por Canal")
+                
+                # Análisis por fuente (cuántos ingresaron)
+                st.markdown("**📢 Ingresos por Fuente de Captación**")
+                
+                fuente_analisis = df_cli.groupby("fuente").agg({
+                    "id": "count",
+                    "monto_propuesta": lambda x: x.apply(limpiar_monto_local).sum()
+                }).reset_index()
+                fuente_analisis.columns = ["Fuente", "Clientes Ingresados", "Monto Total"]
+                fuente_analisis = fuente_analisis[fuente_analisis["Clientes Ingresados"] > 0]
+                fuente_analisis["Monto Promedio"] = fuente_analisis["Monto Total"] / fuente_analisis["Clientes Ingresados"]
+                
+                if not fuente_analisis.empty:
+                    col1, col2 = st.columns(2)
+                    
+                    with col1:
+                        # Gráfico de clientes por fuente
+                        chart_fuente_ing = alt.Chart(fuente_analisis).mark_bar().encode(
+                            x=alt.X("Clientes Ingresados:Q", axis=alt.Axis(title="Clientes")),
+                            y=alt.Y("Fuente:N", sort="-x"),
+                            color=alt.Color("Fuente:N", scale=alt.Scale(scheme="category20"), legend=None),
+                            tooltip=[
+                                alt.Tooltip("Fuente:N"),
+                                alt.Tooltip("Clientes Ingresados:Q", title="Clientes"),
+                                alt.Tooltip("Monto Total:Q", title="Monto Total", format="$,.0f")
+                            ]
+                        ).properties(height=200, title="Clientes Ingresados por Fuente")
+                        
+                        st.altair_chart(chart_fuente_ing, use_container_width=True)
+                    
+                    with col2:
+                        # Tabla resumen
+                        st.dataframe(
+                            fuente_analisis.assign(
+                                **{
+                                    "Monto Total": fuente_analisis["Monto Total"].apply(lambda x: formatear_monto(x)),
+                                    "Monto Promedio": fuente_analisis["Monto Promedio"].apply(lambda x: formatear_monto(x))
+                                }
+                            )[["Fuente", "Clientes Ingresados", "Monto Total", "Monto Promedio"]],
+                            use_container_width=True,
+                            hide_index=True
+                        )
+                
+                st.markdown("---")
+                
+                # Análisis por asesor
+                st.markdown("**👥 Desempeño por Asesor**")
+                
+                asesor_ventas = df_cli.groupby("asesor").agg({
+                    "id": "count",
+                    "monto_propuesta": lambda x: x.apply(limpiar_monto_local).sum()
+                }).reset_index()
+                asesor_ventas.columns = ["Asesor", "Clientes", "Ventas Totales"]
+                asesor_ventas = asesor_ventas[asesor_ventas["Clientes"] > 0].sort_values("Ventas Totales", ascending=False)
+                
+                if not asesor_ventas.empty:
+                    # Top 10 asesores
+                    top_asesores = asesor_ventas.head(10)
+                    
+                    chart_ases_ventas = alt.Chart(top_asesores).mark_bar().encode(
+                        x=alt.X("Ventas Totales:Q", axis=alt.Axis(title="Ventas ($)", format="$,.0f")),
+                        y=alt.Y("Asesor:N", sort="-x"),
+                        color=alt.value("#4DA8FF"),
+                        tooltip=[
+                            alt.Tooltip("Asesor:N"),
+                            alt.Tooltip("Clientes:Q"),
+                            alt.Tooltip("Ventas Totales:Q", title="Ventas", format="$,.0f")
+                        ]
+                    ).properties(height=300, title="Top 10 Asesores por Ventas")
+                    
+                    st.altair_chart(chart_ases_ventas, use_container_width=True)
 
         # 💰 ANÁLISIS FINANCIERO AVANZADO - CARTERA BEWORK
         st.markdown("---")
