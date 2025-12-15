@@ -4392,6 +4392,9 @@ def _force_refresh():
         _CLIENTES_CACHE_TIME = 0
         _HISTORIAL_CACHE = None
         _HISTORIAL_CACHE_TIME = 0
+        # Limpiar flag de primera carga para permitir mensajes de recarga
+        if 'gs_first_load' in st.session_state:
+            del st.session_state['gs_first_load']
         # Reset filtros también
         _reset_filters()
         # Marcar que se necesita actualizar (sin llamar st.rerun() en callback)
@@ -5553,25 +5556,24 @@ with tab_cli:
                                 df_new.to_excel(writer, index=False, sheet_name="Clientes")
                     except Exception:
                         pass
+                    # Configurar layout del sheet si es necesario
                     try:
-                        _CLIENTES_CACHE = df_new.copy()
-                        import time
-                        _CLIENTES_CACHE_TIME = time.time()
-                        try:
-                            st.session_state["use_sheet_layout"] = True
-                            if st.session_state.get("sheet_human_headers"):
-                                st.session_state["sheet_columns_human"] = st.session_state.get("sheet_human_headers")
-                                st.session_state["sheet_internal_map"] = st.session_state.get("sheet_internal_map", {})
-                            else:
-                                st.session_state["sheet_columns"] = [c for c in SHEET_INTERNAL_COLUMNS if c in df_new.columns]
-                                st.session_state["sheet_header_map"] = dict(zip(SHEET_INTERNAL_COLUMNS, SHEET_HEADERS))
-                        except Exception:
-                            pass
+                        st.session_state["use_sheet_layout"] = True
+                        if st.session_state.get("sheet_human_headers"):
+                            st.session_state["sheet_columns_human"] = st.session_state.get("sheet_human_headers")
+                            st.session_state["sheet_internal_map"] = st.session_state.get("sheet_internal_map", {})
+                        else:
+                            st.session_state["sheet_columns"] = [c for c in SHEET_INTERNAL_COLUMNS if c in df_new.columns]
+                            st.session_state["sheet_header_map"] = dict(zip(SHEET_INTERNAL_COLUMNS, SHEET_HEADERS))
                     except Exception:
                         pass
+                    # Actualizar el caché (ya están en scope global)
+                    _CLIENTES_CACHE = df_new.copy()
+                    import time
+                    _CLIENTES_CACHE_TIME = time.time()
                     st.success(f"Se recargaron {len(df_new)} registros desde Google Sheets y se actualizó el CSV local.")
                     df_cli = df_new
-                    st.experimental_rerun()
+                    do_rerun()
             except Exception as e:
                 st.error(f"Error recargando desde Google Sheets: {e}")
     
