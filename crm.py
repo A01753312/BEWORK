@@ -679,7 +679,12 @@ def calcular_analisis_financiero(df: pd.DataFrame) -> dict:
     # Limpiar y convertir montos
     df_temp = df.copy()
     df_temp['monto_propuesta_num'] = df_temp['monto_propuesta'].apply(limpiar_monto)
-    df_temp['monto_final_num'] = df_temp['monto_final'].apply(limpiar_monto)
+    
+    # Usar monto_final si existe, sino monto_propuesta
+    if 'monto_final' in df_temp.columns:
+        df_temp['monto_final_num'] = df_temp['monto_final'].apply(limpiar_monto)
+    else:
+        df_temp['monto_final_num'] = df_temp['monto_propuesta_num']
     
     # Calcular métricas
     total_propuesto = df_temp['monto_propuesta_num'].sum()
@@ -981,8 +986,8 @@ def generar_presentacion_dashboard(df_cli: pd.DataFrame) -> bytes:
             return 0.0
     
     df_temp['monto_analisis'] = df_temp.apply(
-        lambda row: limpiar_monto_simple(row['monto_final']) if row['estatus'] == 'DISPERSADO' 
-        else limpiar_monto_simple(row['monto_propuesta']), axis=1
+        lambda row: limpiar_monto_simple(row.get('monto_final', row.get('monto_propuesta', ''))) if row['estatus'] == 'DISPERSADO' 
+        else limpiar_monto_simple(row.get('monto_propuesta', '')), axis=1
     )
     df_analisis = df_temp[df_temp['monto_analisis'] > 0].copy()
     
