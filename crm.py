@@ -1301,6 +1301,15 @@ DOCS_DIR.mkdir(parents=True, exist_ok=True)
 CLIENTES_CSV = DATA_DIR / "clientes.csv"
 CLIENTES_XLSX = DATA_DIR / "clientes.xlsx"
 
+# Categorías de documentos: claves a tipos permitidos (extensiones, None = any)
+DOC_CATEGORIAS = {
+    "estado_cuenta": ["pdf", "jpg", "jpeg", "png"],
+    "buro_credito": ["pdf", "jpg", "jpeg", "png"],
+    "solicitud": ["pdf", "docx", "jpg", "jpeg", "png"],
+    "otros": None,
+    "contrato": ["pdf", "jpg", "jpeg", "png"],
+}
+
 # === CONFIGURACIÓN GOOGLE SHEETS ===
 USE_GSHEETS = True   # pon False si quieres trabajar sólo local
 GSHEET_ID      = "1wD9D3OsSB4HXel1LIGo0h6xNdcjZEF-iHue-Hl4z1pg"
@@ -1856,16 +1865,65 @@ ESTATUS_INBURSA_OPCIONES = _load_estatus_specific(GSHEET_ESTATUSINBURSA_TAB, EST
 ESTATUS_MULTIVA_OPCIONES = _load_estatus_specific(GSHEET_ESTATUSMULTIVA_TAB, ESTATUSMULTIVA_FILE, _default_est_Multiva)
 ESTATUS_MEJORAVIT_OPCIONES = _load_estatus_specific(GSHEET_ESTATUSMEJORAVIT_TAB, ESTATUSMEJORAVIT_FILE, _default_est_Mejoravit)
 
+# Requisitos de documentos por producto y por fase
+PRODUCT_DOCS = {
+    "MULTIVA": {
+        "fase1": [
+            ("ine_frente", "INE FRENTE", "ine"),
+            ("ine_reverso", "INE REVERSO", "ine"),
+            ("id2_frente", "2DA ID FRENTE", "identificacion"),
+            ("id2_reverso", "2DA ID REVERSO", "identificacion"),
+            ("comprobante", "COMPROBANTE DE DOMICILIO", "comprobante"),
+            ("pre_solicitud", "PRE SOLICITUD", "pre_solicitud"),
+            ("simulacion", "SIMULACION", "simulacion"),
+            ("cfdi", "CFDI O ESTADO DE CUENTA", "cfdi"),
+            ("pantalla_amarilla", "PANTALLA AMARILLA", "pantalla_amarilla"),
+        ],
+        "fase2": [("solicitud_firmada", "Solicitud firmada", "solicitud"), ("evidencia_foto", "Evidencia foto", "otros")],
+        "fase3": [("contrato", "Contrato", "contrato")],
+        "fase4": [("confirmacion_contrato", "Confirmación contrato firmado", "contrato")],
+    },
+    "INBURSA": {
+        "fase1": [
+            ("ine_frente", "INE FRENTE", "ine"),
+            ("ine_reverso", "INE REVERSO", "ine"),
+            ("comprobante", "COMPROBANTE DE DOMICILIO", "comprobante"),
+            ("carta_libranza", "CARTA LIBRANZA", "carta_libranza"),
+            ("video", "VIDEO", "video"),
+            ("cfdi", "CFDI O ESTADO DE CUENTA", "cfdi"),
+        ],
+    },
+    "MEJORAVIT": {
+        "fase1": [
+            ("ine_frente", "INE FRENTE", "ine"),
+            ("ine_reverso", "INE REVERSO", "ine"),
+            ("comprobante", "COMPROBANTE DE DOMICILIO", "comprobante"),
+            ("curp", "CURP", "curp"),
+            ("formato", "FORMATO", "formato"),
+            ("estado_cuenta", "ESTADO DE CUENTA", "cfdi"),
+        ],
+        "fase2": [("acuse", "Acuse", "acuse")],
+    }
+}
+
 # Inicializar sucursales (fallback a load_sucursales)
 SUCURSALES = load_sucursales()
 
-DOC_CATEGORIAS = {
-    "estado_cuenta": ["pdf", "jpg", "jpeg", "png"],
-    "buro_credito":  ["pdf", "jpg", "jpeg", "png"],
-    "solicitud":     ["pdf", "docx", "jpg", "jpeg", "png"],
-    "contrato":      ["pdf", "docx", "jpg", "jpeg", "png"],  # visible si estatus = en dispersión
-    "otros":         ["pdf", "docx", "xlsx", "jpg", "jpeg", "png"],
-}
+# Añadir categorías específicas útiles para requisitos por producto
+DOC_CATEGORIAS.update({
+    "ine": ["jpg", "jpeg", "png", "pdf"],
+    "identificacion": ["jpg", "jpeg", "png", "pdf"],
+    "comprobante": ["pdf", "jpg", "jpeg", "png"],
+    "pre_solicitud": ["pdf", "jpg", "jpeg", "png"],
+    "simulacion": ["pdf", "jpg", "jpeg", "png"],
+    "cfdi": ["pdf", "xml"],
+    "pantalla_amarilla": ["png", "jpg", "jpeg"],
+    "carta_libranza": ["pdf", "jpg", "jpeg", "png"],
+    "video": ["mp4", "mov", "avi"],
+    "curp": ["pdf", "jpg", "jpeg", "png"],
+    "formato": ["pdf", "docx"],
+    "acuse": ["pdf", "jpg", "jpeg", "png"],
+})
 
 # ---------- Helpers ----------
 SAFE_NAME_RE = re.compile(r"[^A-Za-z0-9._\\-áéíóúÁÉÍÓÚñÑ ]+")
@@ -2330,6 +2388,53 @@ def get_field_by_id(cid: str, field: str) -> str:
     except Exception:
         return ""
 
+
+def _client_has_required_files(cid: str, product: str, phase: str) -> bool:
+    """Return True if all required rids for product+phase exist among the client's files."""
+    try:
+        reqs = PRODUCT_DOCS.get((product or "").strip().upper(), {}).get(phase, [])
+        if not reqs:
+            return False
+        files = listar_docs_cliente(cid)
+        names = [p.name for p in files]
+        for rid, _, _ in reqs:
+            # look for at least one file that starts with the requirement prefix
+            found = any(n.startswith(f"{rid}_") or n == rid for n in names)
+            if not found:
+                return False
+        return True
+    except Exception:
+        return False
+
+
+def _advance_client_phase_if_complete(cid: str, producto: str, current_phase: str) -> tuple[bool, str]:
+    """If client has all files for current_phase, advance to next phase (if any).
+    Returns (advanced: bool, new_phase: str).
+    """
+    try:
+        prod = (producto or "").strip().upper()
+        fases = sorted(list((PRODUCT_DOCS.get(prod) or {}).keys()))
+        if not fases or current_phase not in fases:
+            return (False, current_phase)
+        # If requirements met for current phase, advance to next
+        if _client_has_required_files(cid, prod, current_phase):
+            idx = fases.index(current_phase)
+            if idx + 1 < len(fases):
+                new_phase = fases[idx + 1]
+                # persist to clients
+                try:
+                    df = cargar_clientes()
+                    if 'id' in df.columns and cid in df['id'].astype(str).tolist():
+                        df.loc[df['id'].astype(str) == str(cid), 'fase'] = new_phase
+                        guardar_clientes(df)
+                        append_historial(str(cid), get_nombre_by_id(cid), get_field_by_id(cid, 'estatus'), get_field_by_id(cid, 'estatus'), f"Auto-avance fase: {current_phase} -> {new_phase}", action="DOCUMENTOS", actor=(current_user() or {}).get('user'))
+                        return (True, new_phase)
+                except Exception:
+                    return (False, current_phase)
+    except Exception:
+        pass
+    return (False, current_phase)
+
 # --- NEW: búsquedas rápidas y cacheadas (preindexado) ---
 @st.cache_data(show_spinner=False)
 def build_text_index(options: list[str]):
@@ -2647,7 +2752,7 @@ COLUMNS = [
     "ref2_nombre","ref2_telefono","ref2_parentesco",
     "antiguedad_cuenta","asesor",
     "fecha_ingreso","fecha_dispersion",
-    "estatus","observaciones",
+    "estatus","observaciones","fase",
     "score","analista"
 ]
 # Note: 'producto', 'fuente_base', 'usuario_cipre', and 'contrasena' are
@@ -5296,8 +5401,8 @@ with tab_cli:
                     asesor_n = "" if asesor_select == "(Sin asesor)" else asesor_select
             obs_n = st.text_area("Observaciones")
 
-            st.markdown("**Documentos:**")
-            
+            st.markdown("**Documentos (requeridos - fase 1 según producto)**")
+
             # Opción para elegir dónde guardar
             col_storage1, col_storage2 = st.columns(2)
             with col_storage1:
@@ -5310,11 +5415,17 @@ with tab_cli:
             with col_storage2:
                 if st.session_state.get('drive_creds') is None:
                     st.info("💡 Conecta Google Drive en el sidebar para activar esta opción")
-            
-            up_estado = st.file_uploader("Estado de cuenta", type=DOC_CATEGORIAS["estado_cuenta"], accept_multiple_files=True, key="doc_estado")
-            up_buro   = st.file_uploader("Buró de crédito", type=DOC_CATEGORIAS["buro_credito"], accept_multiple_files=True, key="doc_buro")
-            up_solic  = st.file_uploader("Solicitud", type=DOC_CATEGORIAS["solicitud"], accept_multiple_files=True, key="doc_solic")
-            up_otros = st.file_uploader("Otros", type=None, accept_multiple_files=True, key="doc_otros")
+
+            # Mostrar uploaders de fase1 según producto seleccionado (en el form de alta)
+            prod_upper = (producto_n or "").strip().upper()
+            fase1_reqs = PRODUCT_DOCS.get(prod_upper, {}).get("fase1", [])
+            files_map = {}
+            if fase1_reqs:
+                for rid, rlabel, rcat in fase1_reqs:
+                    accept_types = DOC_CATEGORIAS.get(rcat)
+                    files_map[rid] = st.file_uploader(rlabel, type=accept_types, accept_multiple_files=True, key=f"doc_{rid}")
+            else:
+                st.info("No hay requisitos de documentos configurados para el producto seleccionado.")
             st.markdown("Dar doble click para confirmar.")
             if st.form_submit_button("Guardar cliente"):
                 
@@ -5372,6 +5483,8 @@ with tab_cli:
                             "antiguedad_cuenta": antiguedad_cuenta_n.strip(),
                             "usuario_cipre": usuario_cipre_n.strip(),
                             "contrasena": contrasena_n.strip()
+                            ,
+                            "fase": "fase1"
                         }
                         base = pd.concat([df_cli, pd.DataFrame([nuevo])], ignore_index=True)
                         guardar_clientes(base)
@@ -5381,11 +5494,14 @@ with tab_cli:
 
                         # Guardar documentos (auto refresh al terminar) — acumular y registrar 1 sola entrada en historial
                         subidos_lote = []
-                        if up_estado:   subidos_lote += subir_docs(cid, up_estado,   prefijo="estado_", usar_drive=usar_google_drive)
-                        if up_buro:     subidos_lote += subir_docs(cid, up_buro,     prefijo="buro_", usar_drive=usar_google_drive)
-                        if up_solic:    subidos_lote += subir_docs(cid, up_solic,    prefijo="solic_", usar_drive=usar_google_drive)
-                        #if up_contrato: subidos_lote += subir_docs(cid, up_contrato, prefijo="contrato_", usar_drive=usar_google_drive)
-                        if up_otros:    subidos_lote += subir_docs(cid, up_otros,    prefijo="otros_", usar_drive=usar_google_drive)
+                        # Guardar archivos provenientes del mapa de uploaders generados arriba (fase1)
+                        try:
+                            for rid, fobj in (files_map or {}).items():
+                                if fobj:
+                                    pref = f"{rid}_"
+                                    subidos_lote += subir_docs(cid, fobj, prefijo=pref, usar_drive=usar_google_drive)
+                        except Exception:
+                            pass
 
                         if subidos_lote:
                             actor = (current_user() or {}).get("user") or (current_user() or {}).get("email")
@@ -5395,6 +5511,14 @@ with tab_cli:
                                 f"Subidos: {', '.join(subidos_lote)}",
                                 action="DOCUMENTOS", actor=actor
                             )
+
+                        # Auto-avanzar fase si se completaron los requisitos de la fase1 (creación)
+                        try:
+                            adv, new_phase = _advance_client_phase_if_complete(cid, producto_n, "fase1")
+                            if adv:
+                                st.info(f"Fase actualizada automáticamente a {new_phase}")
+                        except Exception:
+                            pass
 
                         st.success(f"Cliente {cid} creado ✅")
                         do_rerun()  # NEW: refresca todo
@@ -5755,32 +5879,40 @@ with tab_docs:
                 if st.session_state.get('drive_creds') is None:
                     st.info("💡 Conecta Google Drive en el sidebar para activar esta opción")
             
-            # Unificar los uploaders en un solo formulario con un botón "Subir archivos"
+            # Formulario de subida dinámico según producto y fase
             form_key = f"form_subir_docs_{cid_sel}"
+            producto_cliente = (get_field_by_id(cid_sel, "producto") or "").strip().upper()
+            # fases disponibles para este producto
+            fases_disp = sorted(list((PRODUCT_DOCS.get(producto_cliente) or {}).keys()))
+            fase_sel = st.selectbox("Fase", fases_disp or ["fase1"], index=0, key=f"fase_sel_{cid_sel}")
             with st.form(form_key, clear_on_submit=True):
-                up_estado_e = st.file_uploader("Estado de cuenta", type=DOC_CATEGORIAS["estado_cuenta"], accept_multiple_files=True, key=f"estado_{cid_sel}")
-                up_buro_e = st.file_uploader("Buró de crédito", type=DOC_CATEGORIAS["buro_credito"], accept_multiple_files=True, key=f"buro_{cid_sel}")
-                up_solic_e = st.file_uploader("Solicitud", type=DOC_CATEGORIAS["solicitud"], accept_multiple_files=True, key=f"solic_{cid_sel}")
-                up_otros_e = st.file_uploader("Otros", type=DOC_CATEGORIAS["otros"], accept_multiple_files=True, key=f"otros_{cid_sel}")
-                if _is_dispersion(estatus_cliente_sel):
-                    up_contrato_e = st.file_uploader("Contrato ", type=DOC_CATEGORIAS["contrato"], accept_multiple_files=True, key=f"contrato_{cid_sel}")
+                # generar uploaders dinámicos para la fase seleccionada
+                fase_reqs = PRODUCT_DOCS.get(producto_cliente, {}).get(fase_sel, [])
+                uploaded_map = {}
+                if fase_reqs:
+                    for rid, rlabel, rcat in fase_reqs:
+                        accept_types = DOC_CATEGORIAS.get(rcat)
+                        uploaded_map[rid] = st.file_uploader(rlabel, type=accept_types, accept_multiple_files=True, key=f"{rid}_{cid_sel}")
                 else:
-                    up_contrato_e = None
+                    st.info("No hay requisitos configurados para esta fase/producto.")
+
                 submitted = st.form_submit_button("⬆️ Subir archivos")
                 if submitted:
                     subidos_lote = []
-                    if up_estado_e:   subidos_lote += subir_docs(cid_sel, up_estado_e,   prefijo="estado_", usar_drive=usar_google_drive_e)
-                    if up_buro_e:     subidos_lote += subir_docs(cid_sel, up_buro_e,     prefijo="buro_", usar_drive=usar_google_drive_e)
-                    if up_solic_e:    subidos_lote += subir_docs(cid_sel, up_solic_e,    prefijo="solic_", usar_drive=usar_google_drive_e)
-                    if up_otros_e:    subidos_lote += subir_docs(cid_sel, up_otros_e,    prefijo="otros_", usar_drive=usar_google_drive_e)
-                    if up_contrato_e: subidos_lote += subir_docs(cid_sel, up_contrato_e, prefijo="contrato_", usar_drive=usar_google_drive_e)
+                    try:
+                        for rid, fobj in (uploaded_map or {}).items():
+                            if fobj:
+                                pref = f"{rid}_"
+                                subidos_lote += subir_docs(cid_sel, fobj, prefijo=pref, usar_drive=usar_google_drive_e)
+                    except Exception:
+                        pass
 
                     if subidos_lote:
-                        # Limpia uploaders
-                        for k in (f"estado_{cid_sel}", f"buro_{cid_sel}", f"solic_{cid_sel}", f"otros_{cid_sel}", f"contrato_{cid_sel}"):
-                            st.session_state.pop(k, None)
+                        # limpiar keys de session correspondientes
+                        for rid in (uploaded_map or {}).keys():
+                            st.session_state.pop(f"{rid}_{cid_sel}", None)
 
-                        # 1 sola línea en historial
+                        # historial
                         actor = (current_user() or {}).get("user") or (current_user() or {}).get("email")
                         try:
                             nombre_x = get_nombre_by_id(cid_sel)
@@ -5799,6 +5931,13 @@ with tab_docs:
                         tok_key = f"docs_token_{cid_sel}"
                         st.session_state[tok_key] = st.session_state.get(tok_key, 0) + 1
                         st.success(f"Archivo(s) subido(s): {len(subidos_lote)} ✅")
+                        # Auto-avanzar fase si se completaron los requisitos de la fase seleccionada
+                        try:
+                            adv, new_phase = _advance_client_phase_if_complete(cid_sel, producto_cliente, fase_sel)
+                            if adv:
+                                st.info(f"Fase actualizada automáticamente a {new_phase}")
+                        except Exception:
+                            pass
                     else:
                         st.info("No seleccionaste archivos para subir.")
 
@@ -5812,78 +5951,65 @@ with tab_docs:
             tok_key = f"docs_token_{cid_sel}"
             tok = st.session_state.get(tok_key, 0)
 
+
             files = listar_docs_cliente(cid_sel)
             if files:
                 st.markdown("#### Archivos del cliente")
-                # mapping explícito de prefijos usados al guardar
-                prefix_map = {
-                    "estado_cuenta": "estado_",
-                    "buro_credito": "buro_",
-                    "solicitud": "solic_",
-                    "contrato": "contrato_",
-                    "otros": "otros_",
-                }
-                for cat in DOC_CATEGORIAS.keys():
-                    pref = prefix_map.get(cat, cat.split('_')[0] + "_")
-                    cat_files = [f for f in files if f.name.startswith(pref)]
-                    if cat_files:
-                        st.write(f"• {cat.replace('_',' ').title()}:")
-                        for f in cat_files:
-                                    # Flow: user clicks a request button which prepares the bytes and
-                                    # registers the download in historial; then a download_button
-                                    # appears where the user can complete the download.
-                                    req_key = f"dl_req_{cid_sel}_{tok}_{f.name}"
-                                    blob_key = f"dl_blob_{cid_sel}_{f.name}"
-                                    btn_label = f"{f.name}"
-                                    #if st.button(btn_label, key=req_key):
+                # Agrupar archivos por prefijo (antes_del_underscore)
+                groups: dict[str, list] = {}
+                for f in files:
+                    name = f.name if hasattr(f, 'name') else str(f)
+                    pref = name.split('_')[0] if '_' in name else 'otros'
+                    groups.setdefault(pref, []).append(f)
+
+                for pref, flist in sorted(groups.items()):
+                    # Mostrar label legible del prefijo
+                    label = pref.replace('_', ' ').upper()
+                    st.write(f"• {label}:")
+                    for f in flist:
+                        req_key = f"dl_req_{cid_sel}_{tok}_{f.name}"
+                        blob_key = f"dl_blob_{cid_sel}_{f.name}"
+                        try:
+                            data_bytes = f.read_bytes()
+                        except Exception:
+                            data_bytes = b""
+
+                        if st.download_button(
+                            f"⬇️Descargar {f.name}",
+                            data=data_bytes,
+                            file_name=f.name,
+                            key=f"dl_btn_{cid_sel}_{tok}_{f.name}"
+                        ):
+                            try:
+                                nombre_x = get_nombre_by_id(cid_sel)
+                                est_x    = get_field_by_id(cid_sel, "estatus")
+                            except Exception:
+                                nombre_x = est_x = ""
+                            actor = (current_user() or {}).get("user") or (current_user() or {}).get("email")
+                            append_historial(
+                                str(cid_sel), nombre_x,
+                                est_x, est_x,
+                                f"Descargado: {f.name}",
+                                action="DESCARGA DOCUMENTO",
+                                actor=actor
+                            )
+
+                        a1, a2 = st.columns([1, 2])
+                        with a1:
+                            del_key = f"del_file_{cid_sel}_{f.name}"
+                            if st.button("Eliminar", key=del_key):
+                                try:
+                                    f.unlink()
+                                    st.session_state.pop(blob_key, None)
+                                    st.session_state[tok_key] = st.session_state.get(tok_key, 0) + 1
                                     try:
-                                        data_bytes = f.read_bytes()
-                                    except Exception:
-                                        data_bytes = b""
-
-                                    if st.download_button(
-                                        f"⬇️Descargar {f.name}",
-                                        data=data_bytes,
-                                        file_name=f.name,
-                                        key=f"dl_btn_{cid_sel}_{tok}_{f.name}"
-                                    ):
-                                            # Registrar en historial la descarga
-                                        try:
-                                            nombre_x = get_nombre_by_id(cid_sel)
-                                            est_x    = get_field_by_id(cid_sel, "estatus")
-                                        except Exception:
-                                            nombre_x = est_x = ""
                                         actor = (current_user() or {}).get("user") or (current_user() or {}).get("email")
-                                        append_historial(
-                                            str(cid_sel), nombre_x,
-                                            est_x, est_x,
-                                            f"Descargado: {f.name}",
-                                            action="DESCARGA DOCUMENTO",
-                                            actor=actor
-                                        )
-
-
-                                    # --- Acciones adicionales: Eliminar / Reemplazar ---
-                                    a1, a2 = st.columns([1, 2])
-                                    with a1:
-                                        del_key = f"del_file_{cid_sel}_{f.name}"
-                                        if st.button("Eliminar", key=del_key):
-                                            try:
-                                                # borrar archivo físico
-                                                f.unlink()
-                                                # limpiar blobs relacionados
-                                                st.session_state.pop(blob_key, None)
-                                                # forzar refresh de botones
-                                                st.session_state[tok_key] = st.session_state.get(tok_key, 0) + 1
-                                                # historial
-                                                try:
-                                                    actor = (current_user() or {}).get("user") or (current_user() or {}).get("email")
-                                                    append_historial(str(cid_sel), get_nombre_by_id(cid_sel), "", "", f"Eliminado: {f.name}", action="DOCUMENTOS", actor=actor)
-                                                except Exception:
-                                                    pass
-                                                st.success(f"Archivo eliminado: {f.name}")
-                                            except Exception as e:
-                                                st.error(f"No se pudo eliminar {f.name}: {e}")
+                                        append_historial(str(cid_sel), get_nombre_by_id(cid_sel), "", "", f"Eliminado: {f.name}", action="DOCUMENTOS", actor=actor)
+                                    except Exception:
+                                        pass
+                                    st.success(f"Archivo eliminado: {f.name}")
+                                except Exception as e:
+                                    st.error(f"No se pudo eliminar {f.name}: {e}")
 
                             
                 # Después de listar todas las categorías, ofrecer ZIP del cliente (una sola vez)
