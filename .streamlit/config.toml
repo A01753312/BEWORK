@@ -8,12 +8,13 @@ hideTopBar = false
 hideSidebarNav = false
 
 [theme]
-# Puedes personalizar los colores si lo deseas
-# primaryColor = "#FF4B4B"
-# backgroundColor = "#FFFFFF"
-# secondaryBackgroundColor = "#F0F2F6"
-# textColor = "#262730"
-# font = "sans serif"
+# Tema claro personalizado para BEWORK
+base = "light"
+primaryColor = "#4DA8FF"
+backgroundColor = "#FFFFFF"
+secondaryBackgroundColor = "#F7FAFC"
+textColor = "#2D3748"
+font = "sans serif"
 
 [server]
 # Configuración del servidor
