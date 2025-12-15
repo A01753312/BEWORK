@@ -5883,12 +5883,12 @@ with tab_cli:
             st.caption("Eliminar cliente (Siempre dar doble click para confirmar)")
             
             if can("delete_client"):
+                    cid_del = ""
                     if ids_quick:
                         # mostrar opciones con 'ID - Nombre' para permitir borrar por nombre visualmente
                         opts = [""] + [f"{cid} - {get_nombre_by_id(cid)}" if get_nombre_by_id(cid) else str(cid) for cid in ids_quick]
                         sel = st.selectbox("Cliente a eliminar (ID - Nombre)", opts)
                         # extraer id del texto seleccionado
-                        cid_del = ""
                         if sel:
                             if " - " in sel:
                                 cid_del = sel.split(" - ", 1)[0]
