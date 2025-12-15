@@ -4818,7 +4818,7 @@ with tab_dash:
                         color=alt.value("black")
                     )
                     
-                    st.altair_chart(chart + text, use_container_width=True)
+                    st.altair_chart(chart + text, width='stretch')
         
         # 📅 TAB 2: POR FECHA
         with dash_tab2:
@@ -4937,7 +4937,7 @@ with tab_dash:
                                 title="Evolución de Clientes por Mes"
                             )
                             
-                            st.altair_chart(line_chart, use_container_width=True)
+                            st.altair_chart(line_chart, width='stretch')
                         
                         # Gráfico de dona: Distribución por estatus en el período
                         st.markdown("**Distribución por estatus en el período:**")
@@ -4964,7 +4964,7 @@ with tab_dash:
                             title="Distribución por Estatus"
                         )
                         
-                        st.altair_chart(dona_chart, use_container_width=True)
+                        st.altair_chart(dona_chart, width='stretch')
         
         # 🏢 TAB 3: POR SUCURSAL/ASESOR
         with dash_tab3:
@@ -4993,7 +4993,7 @@ with tab_dash:
                             sucursal_df.assign(
                                 **{"Porcentaje": sucursal_df["porcentaje"].astype(str) + "%"}
                             )[["sucursal", "cantidad", "Porcentaje"]],
-                            use_container_width=True,
+                            width='stretch',
                             hide_index=True
                         )
                     
@@ -5014,7 +5014,7 @@ with tab_dash:
                             title="Distribución por Sucursal"
                         )
                         
-                        st.altair_chart(chart_suc, use_container_width=True)
+                        st.altair_chart(chart_suc, width='stretch')
             
             # SUB-TAB: ASESORES
             with sub_tab2:
@@ -5070,7 +5070,7 @@ with tab_dash:
                             asesor_df.assign(
                                 **{"Porcentaje": asesor_df["porcentaje"].astype(str) + "%"}
                             )[["asesor", "cantidad", "Porcentaje"]],
-                            use_container_width=True,
+                            width='stretch',
                             hide_index=True
                         )
                     
@@ -5093,7 +5093,7 @@ with tab_dash:
                             title="Distribución por Asesor"
                         )
                         
-                        st.altair_chart(chart_ases, use_container_width=True)
+                        st.altair_chart(chart_ases, width='stretch')
             
             # SUB-TAB: FUENTES
             with sub_tab3:
@@ -5115,7 +5115,7 @@ with tab_dash:
                             fuente_df.assign(
                                 **{"Porcentaje": fuente_df["porcentaje"].astype(str) + "%"}
                             )[["fuente", "cantidad", "Porcentaje"]],
-                            use_container_width=True,
+                            width='stretch',
                             hide_index=True
                         )
                     
@@ -5137,7 +5137,7 @@ with tab_dash:
                             title="Distribución por Fuente de Captación"
                         )
                         
-                        st.altair_chart(chart_fuente, use_container_width=True)
+                        st.altair_chart(chart_fuente, width='stretch')
         
         # 💼 TAB 4: ANÁLISIS DE VENTAS
         with dash_tab4:
@@ -5205,7 +5205,7 @@ with tab_dash:
                             ]
                         ).properties(height=200)
                         
-                        st.altair_chart(chart_prod, use_container_width=True)
+                        st.altair_chart(chart_prod, width='stretch')
                         
                         # Tabla con detalles
                         st.markdown("**Detalle:**")
@@ -5235,7 +5235,7 @@ with tab_dash:
                             ]
                         ).properties(height=200)
                         
-                        st.altair_chart(chart_montos, use_container_width=True)
+                        st.altair_chart(chart_montos, width='stretch')
                         
                         # Métricas financieras por producto
                         st.markdown("**Detalle Financiero:**")
@@ -5314,7 +5314,7 @@ with tab_dash:
                     ]
                 ).properties(height=200)
                 
-                st.altair_chart(chart_comp, use_container_width=True)
+                st.altair_chart(chart_comp, width='stretch')
             
             # SUB-TAB: INGRESOS POR CANAL
             with ventas_tab3:
@@ -5347,7 +5347,7 @@ with tab_dash:
                             ]
                         ).properties(height=200, title="Clientes Ingresados por Fuente")
                         
-                        st.altair_chart(chart_fuente_ing, use_container_width=True)
+                        st.altair_chart(chart_fuente_ing, width='stretch')
                     
                     with col2:
                         # Tabla resumen
@@ -5358,7 +5358,7 @@ with tab_dash:
                                     "Monto Promedio": fuente_analisis["Monto Promedio"].apply(lambda x: formatear_monto(x))
                                 }
                             )[["Fuente", "Clientes Ingresados", "Monto Total", "Monto Promedio"]],
-                            use_container_width=True,
+                            width='stretch',
                             hide_index=True
                         )
                 
@@ -5389,7 +5389,7 @@ with tab_dash:
                         ]
                     ).properties(height=300, title="Top 10 Asesores por Ventas")
                     
-                    st.altair_chart(chart_ases_ventas, use_container_width=True)
+                    st.altair_chart(chart_ases_ventas, width='stretch')
 # ===== Clientes (alta + edición) =====
 with tab_cli:
     # Cargar datos frescos para la pestaña de clientes
@@ -5772,7 +5772,9 @@ with tab_cli:
                 "estatus": st.column_config.SelectboxColumn("Estatus", options=ESTATUS_OPCIONES, required=True)
             }
 
-        df_clientes_mostrar["sucursal"] = df_clientes_mostrar["sucursal"].where(df_clientes_mostrar["sucursal"].isin(SUCURSALES), "")
+        # Limpiar columna sucursal solo si existe
+        if "sucursal" in df_clientes_mostrar.columns:
+            df_clientes_mostrar["sucursal"] = df_clientes_mostrar["sucursal"].where(df_clientes_mostrar["sucursal"].isin(SUCURSALES), "")
         # antes de mostrar el editor, ordenar df_clientes_mostrar por fechas asc
         df_clientes_mostrar = sort_df_by_dates(df_clientes_mostrar)  # apply ordering
         # FIX: data_editor no acepta ColumnDataKind.DATETIME si la columna está configurada como TextColumn.
@@ -6159,7 +6161,7 @@ with tab_import:
             st.warning("El Excel está vacío o no se pudo leer.")
         else:
             with st.expander("Vista previa", expanded=True):
-                st.dataframe(sort_df_by_dates(df_imp_raw).head(10), use_container_width=True)
+                st.dataframe(sort_df_by_dates(df_imp_raw).head(10), width='stretch')
 
             st.markdown("#### Mapeo de columnas")
             df_cols = df_imp_raw.columns.tolist()
@@ -6325,7 +6327,7 @@ with tab_import:
                     save_estatus(ESTATUS_OPCIONES)
                     st.info(f"Se agregaron {len(added_global)} estatus: {', '.join(added_global)}")
             with st.expander("Previsualización mapeada", expanded=False):
-                st.dataframe(sort_df_by_dates(df_norm).head(10), use_container_width=True)
+                st.dataframe(sort_df_by_dates(df_norm).head(10), width='stretch')
 
             st.markdown("#### Modo de importación")
             modo = st.radio(
@@ -6532,7 +6534,7 @@ with tab_hist:
                         # OTROS: no filtrar por action; mostrar todo lo que no cae en las categorías anteriores
                         pass
 
-                st.dataframe(df_show.reset_index(drop=True), use_container_width=True, hide_index=True)
+                st.dataframe(df_show.reset_index(drop=True), width='stretch', hide_index=True)
 
                 try:
                     csv_bytes = df_show.to_csv(index=False, encoding="utf-8")
