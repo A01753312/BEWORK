@@ -5510,7 +5510,13 @@ with tab_cli:
                     elif internal == "sucursal":
                         colcfg[h] = st.column_config.SelectboxColumn(label, options=[""]+SUCURSALES, required=False)
                     elif internal == "estatus":
-                        colcfg[h] = st.column_config.SelectboxColumn(label, options=ESTATUS_OPCIONES, required=False)
+                        # incluir en las opciones los valores presentes en la hoja además de los catálogos
+                        try:
+                            vals = set([str(x).strip() for x in df_clientes_mostrar[h].dropna().unique() if str(x).strip()])
+                        except Exception:
+                            vals = set()
+                        opts = sorted(list(dict.fromkeys(list(ESTATUS_OPCIONES) + list(vals))))
+                        colcfg[h] = st.column_config.SelectboxColumn(label, options=opts, required=False)
                     else:
                         colcfg[h] = st.column_config.TextColumn(label)
 
@@ -5537,7 +5543,12 @@ with tab_cli:
                     elif col == "sucursal":
                         colcfg[col] = st.column_config.SelectboxColumn(label, options=[""]+SUCURSALES, required=False)
                     elif col == "estatus":
-                        colcfg[col] = st.column_config.SelectboxColumn(label, options=ESTATUS_OPCIONES, required=False)
+                        try:
+                            vals = set([str(x).strip() for x in df_clientes_mostrar[col].dropna().unique() if str(x).strip()])
+                        except Exception:
+                            vals = set()
+                        opts = sorted(list(dict.fromkeys(list(ESTATUS_OPCIONES) + list(vals))))
+                        colcfg[col] = st.column_config.SelectboxColumn(label, options=opts, required=False)
                     else:
                         colcfg[col] = st.column_config.TextColumn(label)
                 try:
