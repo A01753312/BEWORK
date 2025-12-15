@@ -128,21 +128,42 @@ st.markdown("""
 <style>
     /* Ocultar el menú de Streamlit y el footer */
     #MainMenu {visibility: hidden;}
-    footer {visibility: hidden;}
-    
-    /* Tema claro corporativo BEWORK */
-    .stApp {
-        background-color: #FAFBFC;
-        color: #2D3748;
-        font-family: 'Inter', 'Roboto', sans-serif;
-    }
-    
-    /* Estilo del header */
-    .stApp header {
-        background-color: #FFFFFF;
-        border-bottom: 2px solid #0A3D62;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-    }
+                        # Build mapping from sheet human headers -> internal names
+                        def _col_key(s: str) -> str:
+                            return _norm_key(str(s).strip())
+                        human_cols = list(df_sheet.columns)
+                        mapping_human_to_internal = {}
+                        # direct match first
+                        for h in human_cols:
+                            if h in SHEET_HEADERS:
+                                idx = SHEET_HEADERS.index(h)
+                                mapping_human_to_internal[h] = SHEET_INTERNAL_COLUMNS[idx]
+                            elif h in SHEET_INTERNAL_COLUMNS:
+                                mapping_human_to_internal[h] = h
+                            else:
+                                # try normalized match against human headers
+                                kh = _col_key(h)
+                                found = False
+                                for hh, internal in zip(SHEET_HEADERS, SHEET_INTERNAL_COLUMNS):
+                                    if _col_key(hh) == kh:
+                                        mapping_human_to_internal[h] = internal
+                                        found = True
+                                        break
+                                if not found:
+                                    # try match to internal names by normalized key
+                                    for internal in SHEET_INTERNAL_COLUMNS:
+                                        if _col_key(internal) == kh:
+                                            mapping_human_to_internal[h] = internal
+                                            found = True
+                                            break
+                                if not found:
+                                    mapping_human_to_internal[h] = None
+                        # Rename dataframe to internal where possible
+                        rename_map = {h: v for h, v in mapping_human_to_internal.items() if v}
+                        df_mapped = df_sheet.rename(columns=rename_map)
+                        # store the human header order and internal mapping in session for rendering
+                        st.session_state["sheet_human_headers"] = human_cols
+                        st.session_state["sheet_internal_map"] = mapping_human_to_internal
     
     /* Mejorar tabs con tema claro */
     .stTabs [data-baseweb="tab-list"] {
@@ -5235,9 +5256,13 @@ with tab_cli:
                         # activar modo de vista que respeta el layout de la hoja
                         try:
                             st.session_state["use_sheet_layout"] = True
-                            # columnas internas disponibles en el orden solicitado
-                            st.session_state["sheet_columns"] = [c for c in SHEET_INTERNAL_COLUMNS if c in df_new.columns]
-                            st.session_state["sheet_header_map"] = dict(zip(SHEET_INTERNAL_COLUMNS, SHEET_HEADERS))
+                            # prefer human headers from the sheet if we stored them
+                            if st.session_state.get("sheet_human_headers"):
+                                st.session_state["sheet_columns_human"] = st.session_state.get("sheet_human_headers")
+                                st.session_state["sheet_internal_map"] = st.session_state.get("sheet_internal_map", {})
+                            else:
+                                st.session_state["sheet_columns"] = [c for c in SHEET_INTERNAL_COLUMNS if c in df_new.columns]
+                                st.session_state["sheet_header_map"] = dict(zip(SHEET_INTERNAL_COLUMNS, SHEET_HEADERS))
                         except Exception:
                             pass
                     except Exception:
@@ -5439,39 +5464,86 @@ with tab_cli:
         st.info("No hay clientes con los filtros seleccionados.")
     else:
         # Construir column_config; si el usuario refrescó desde Sheets, respetar el layout de la hoja
-        if st.session_state.get("use_sheet_layout") and st.session_state.get("sheet_columns"):
-            sheet_cols = st.session_state.get("sheet_columns")
-            header_map = st.session_state.get("sheet_header_map", {})
-            colcfg = {}
-            for col in sheet_cols:
-                label = header_map.get(col, col)
-                # elegir tipo según columna conocida
-                if col == "id":
-                    colcfg[col] = st.column_config.TextColumn(label, disabled=True)
-                elif col == "producto":
-                    colcfg[col] = st.column_config.SelectboxColumn(label, options=["", "MEJORAVIT", "INBURSA", "MULTIVA"], required=False)
-                elif col == "tipo_tramite":
-                    colcfg[col] = st.column_config.SelectboxColumn(label, options=["","Compra de deuda","Renovacion","Nuevo","Adicional"], required=False)
-                elif col == "plazo":
-                    colcfg[col] = st.column_config.SelectboxColumn(label, options=["",12,24,36,28,54,60], required=False)
-                elif col in ("tipo_vivienda",):
-                    colcfg[col] = st.column_config.SelectboxColumn(label, options=["","Propia","Renta"], required=False)
-                elif col in ("ref1_parentesco", "ref2_parentesco"):
-                    colcfg[col] = st.column_config.SelectboxColumn(label, options=["","Hijo","Espos@","Amig@","Familiar"], required=False)
-                elif col == "fuente":
-                    colcfg[col] = st.column_config.SelectboxColumn(label, options=["","LUZWARE","LEADS","SEGUIMIENTO"], required=False)
-                elif col == "sucursal":
-                    colcfg[col] = st.column_config.SelectboxColumn(label, options=[""]+SUCURSALES, required=False)
-                elif col == "estatus":
-                    # mostrar opciones globales (la selección de estatus por producto se aplica al crear/editar)
-                    colcfg[col] = st.column_config.SelectboxColumn(label, options=ESTATUS_OPCIONES, required=False)
-                else:
-                    colcfg[col] = st.column_config.TextColumn(label)
-            # reordenar df_clientes_mostrar según sheet_cols
-            try:
-                df_clientes_mostrar = df_clientes_mostrar[[c for c in sheet_cols if c in df_clientes_mostrar.columns]]
-            except Exception:
-                pass
+        if st.session_state.get("use_sheet_layout"):
+            # If the sheet provided human headers, build a display DF using those labels
+            sheet_human = st.session_state.get("sheet_columns_human")
+            sheet_internal_map = st.session_state.get("sheet_internal_map") or {}
+            if sheet_human:
+                # Build df_display with human headers in the same order
+                df_display = pd.DataFrame()
+                header_map_internal_to_human = {}
+                for h in sheet_human:
+                    internal = sheet_internal_map.get(h)
+                    header_map_internal_to_human[internal] = h
+                    if internal and internal in df_clientes_mostrar.columns:
+                        df_display[h] = df_clientes_mostrar[internal]
+                    else:
+                        # missing column: fill with blanks
+                        df_display[h] = ""
+
+                # replace df_clientes_mostrar used for display
+                try:
+                    df_clientes_mostrar = df_display
+                except Exception:
+                    pass
+
+                # Build column config with human labels
+                colcfg = {}
+                for h in sheet_human:
+                    # Map common internal names to types where possible
+                    internal = sheet_internal_map.get(h)
+                    label = h
+                    if internal == "id":
+                        colcfg[h] = st.column_config.TextColumn(label, disabled=True)
+                    elif internal == "producto":
+                        colcfg[h] = st.column_config.SelectboxColumn(label, options=["", "MEJORAVIT", "INBURSA", "MULTIVA"], required=False)
+                    elif internal == "tipo_tramite":
+                        colcfg[h] = st.column_config.SelectboxColumn(label, options=["","Compra de deuda","Renovacion","Nuevo","Adicional"], required=False)
+                    elif internal == "plazo":
+                        colcfg[h] = st.column_config.SelectboxColumn(label, options=["",12,24,36,28,54,60], required=False)
+                    elif internal in ("tipo_vivienda",):
+                        colcfg[h] = st.column_config.SelectboxColumn(label, options=["","Propia","Renta"], required=False)
+                    elif internal in ("ref1_parentesco", "ref2_parentesco"):
+                        colcfg[h] = st.column_config.SelectboxColumn(label, options=["","Hijo","Espos@","Amig@","Familiar"], required=False)
+                    elif internal == "fuente":
+                        colcfg[h] = st.column_config.SelectboxColumn(label, options=["","LUZWARE","LEADS","SEGUIMIENTO"], required=False)
+                    elif internal == "sucursal":
+                        colcfg[h] = st.column_config.SelectboxColumn(label, options=[""]+SUCURSALES, required=False)
+                    elif internal == "estatus":
+                        colcfg[h] = st.column_config.SelectboxColumn(label, options=ESTATUS_OPCIONES, required=False)
+                    else:
+                        colcfg[h] = st.column_config.TextColumn(label)
+
+            else:
+                sheet_cols = st.session_state.get("sheet_columns") or []
+                header_map = st.session_state.get("sheet_header_map", {})
+                colcfg = {}
+                for col in sheet_cols:
+                    label = header_map.get(col, col)
+                    if col == "id":
+                        colcfg[col] = st.column_config.TextColumn(label, disabled=True)
+                    elif col == "producto":
+                        colcfg[col] = st.column_config.SelectboxColumn(label, options=["", "MEJORAVIT", "INBURSA", "MULTIVA"], required=False)
+                    elif col == "tipo_tramite":
+                        colcfg[col] = st.column_config.SelectboxColumn(label, options=["","Compra de deuda","Renovacion","Nuevo","Adicional"], required=False)
+                    elif col == "plazo":
+                        colcfg[col] = st.column_config.SelectboxColumn(label, options=["",12,24,36,28,54,60], required=False)
+                    elif col in ("tipo_vivienda",):
+                        colcfg[col] = st.column_config.SelectboxColumn(label, options=["","Propia","Renta"], required=False)
+                    elif col in ("ref1_parentesco", "ref2_parentesco"):
+                        colcfg[col] = st.column_config.SelectboxColumn(label, options=["","Hijo","Espos@","Amig@","Familiar"], required=False)
+                    elif col == "fuente":
+                        colcfg[col] = st.column_config.SelectboxColumn(label, options=["","LUZWARE","LEADS","SEGUIMIENTO"], required=False)
+                    elif col == "sucursal":
+                        colcfg[col] = st.column_config.SelectboxColumn(label, options=[""]+SUCURSALES, required=False)
+                    elif col == "estatus":
+                        colcfg[col] = st.column_config.SelectboxColumn(label, options=ESTATUS_OPCIONES, required=False)
+                    else:
+                        colcfg[col] = st.column_config.TextColumn(label)
+                try:
+                    df_clientes_mostrar = df_clientes_mostrar[[c for c in sheet_cols if c in df_clientes_mostrar.columns]]
+                except Exception:
+                    pass
         else:
             colcfg = {
                 "id": st.column_config.TextColumn("ID", disabled=True),
