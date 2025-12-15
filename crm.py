@@ -2857,6 +2857,10 @@ def cargar_clientes(force_reload: bool = False) -> pd.DataFrame:
                 if 'gs_first_load' not in st.session_state:
                     st.session_state['gs_first_load'] = True
                     show_once_success("gsheets_load", f"Datos cargados desde Google Sheets: {len(df)} registros")
+                
+                # Guardar las columnas originales del sheet para mostrarlas tal cual
+                st.session_state["sheet_human_headers"] = list(df.columns)
+                st.session_state["use_sheet_layout"] = True
 
             # Normalizar encabezados humanos del sheet a nombres internos (si aplica)
             try:
@@ -2865,11 +2869,19 @@ def cargar_clientes(force_reload: bool = False) -> pd.DataFrame:
 
                 header_map = { _col_key(h): internal for h, internal in zip(SHEET_HEADERS, SHEET_INTERNAL_COLUMNS) }
                 rename_map = {}
+                mapping_human_to_internal = {}
+                
                 for orig in list(df.columns):
                     k = _col_key(orig)
                     if k in header_map:
                         rename_map[orig] = header_map[k]
+                        mapping_human_to_internal[orig] = header_map[k]
+                    else:
+                        # Mantener columnas que no mapean (podrían ser nuevas del sheet)
+                        mapping_human_to_internal[orig] = orig
 
+                st.session_state["sheet_internal_map"] = mapping_human_to_internal
+                
                 if rename_map:
                     df = df.rename(columns=rename_map)
             except Exception:
@@ -2904,12 +2916,21 @@ def cargar_clientes(force_reload: bool = False) -> pd.DataFrame:
 
                 est_norm = {_norm_key(x) for x in est_all if str(x).strip()}
 
+                # Solo intentar detectar estatus si la columna no existe o está completamente vacía
                 need_est_col = True
                 if "estatus" in df.columns:
-                    # si existe pero tiene datos vacíos, aún podemos intentar detectar mejor
+                    # Verificar si tiene al menos algunos datos
                     try:
-                        if df["estatus"].astype(str).str.strip().replace("", _np.nan).notna().any():
+                        non_empty_count = df["estatus"].astype(str).str.strip().replace("", _np.nan).notna().sum()
+                        if non_empty_count > 0:
                             need_est_col = False
+                            # Log para debug
+                            try:
+                                logp = DATA_DIR / "gs_debug.log"
+                                with open(logp, "a", encoding="utf-8") as fh:
+                                    fh.write(f"{datetime.now().isoformat()} - cargar_clientes: columna 'estatus' encontrada con {non_empty_count} valores no vacíos\n")
+                            except Exception:
+                                pass
                     except Exception:
                         pass
 
@@ -2923,6 +2944,12 @@ def cargar_clientes(force_reload: bool = False) -> pd.DataFrame:
                                 # renombrar esta columna a 'estatus' si aún no existe
                                 if "estatus" not in df.columns:
                                     df = df.rename(columns={col: "estatus"})
+                                    try:
+                                        logp = DATA_DIR / "gs_debug.log"
+                                        with open(logp, "a", encoding="utf-8") as fh:
+                                            fh.write(f"{datetime.now().isoformat()} - cargar_clientes: detectada columna de estatus en '{col}'\n")
+                                    except Exception:
+                                        pass
                                     break
                         except Exception:
                             continue
@@ -2939,58 +2966,16 @@ def cargar_clientes(force_reload: bool = False) -> pd.DataFrame:
             except Exception:
                 pass
 
-            df = df.fillna("")
-            for c in COLUMNS:
+            # Solo añadir columnas críticas que no existen (no todas las de COLUMNS)
+            critical_columns = ["id", "nombre", "estatus", "producto"]
+            for c in critical_columns:
                 if c not in df.columns:
                     df[c] = ""
 
-            # Si la columna 'estatus' existe pero está vacía, intentar rescatarla
-            try:
-                if "estatus" in df.columns:
-                    try:
-                        est_empty = df["estatus"].astype(str).str.strip().replace("", _np.nan).isna().all()
-                    except Exception:
-                        est_empty = False
-                else:
-                    est_empty = True
+            # Ya no necesitamos rescatar estatus aquí, lo hicimos arriba de manera más inteligente
 
-                if est_empty:
-                    # buscar la columna con mayor proporción de valores que coinciden con catálogos de estatus
-                    best_col = None
-                    best_ratio = 0.0
-                    for col in df.columns:
-                        if col == "estatus":
-                            continue
-                        try:
-                            vals = df[col].astype(str).str.strip()
-                            non_empty = vals[vals != ""]
-                            if len(non_empty) == 0:
-                                continue
-                            vals_norm = {_norm_key(v) for v in non_empty[:200].tolist()}
-                            match_count = len([v for v in vals_norm if v in est_norm])
-                            ratio = match_count / max(1, len(vals_norm))
-                            if ratio > best_ratio:
-                                best_ratio = ratio
-                                best_col = col
-                        except Exception:
-                            continue
-
-                    if best_col and best_ratio >= 0.30:
-                        # Assign values and log
-                        try:
-                            df["estatus"] = df[best_col].astype(str)
-                            try:
-                                logp = DATA_DIR / "gs_debug.log"
-                                with open(logp, "a", encoding="utf-8") as fh:
-                                    fh.write(f"{datetime.now().isoformat()} - cargar_clientes: rescued 'estatus' from column={best_col} ratio={best_ratio}\n")
-                            except Exception:
-                                pass
-                        except Exception:
-                            pass
-            except Exception:
-                pass
-
-            result = df[[c for c in COLUMNS if c in df.columns]].astype(str).fillna("")
+            # Retornar el dataframe con todas sus columnas (no filtrar por COLUMNS)
+            result = df.fillna("").astype(str)
             
             # Actualizar caché
             _CLIENTES_CACHE = result.copy()
