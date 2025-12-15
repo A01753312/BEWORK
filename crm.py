@@ -5218,62 +5218,7 @@ with tab_cli:
     # Cargar datos frescos para la pestaña de clientes
     df_cli = cargar_y_corregir_clientes()
     
-    # Botón para refrescar la lista local desde Google Sheets (forzar recarga)
-    colr1, colr2 = st.columns([1, 4])
-    with colr1:
-        if st.button("🔁 Refrescar desde Google Sheets", key="refresh_from_gs"):
-            try:
-                df_new = cargar_clientes(force_reload=True)
-                if df_new is None or df_new.empty:
-                    st.warning("No se encontraron registros en Google Sheets al recargar.")
-                else:
-                    # Actualizar cache y archivo local para reflejar exactamente la hoja
-                    try:
-                        df_new.to_csv(CLIENTES_CSV, index=False, encoding="utf-8")
-                    except Exception:
-                        pass
-                    try:
-                        engine = None
-                        try:
-                            import xlsxwriter
-                            engine = "xlsxwriter"
-                        except Exception:
-                            try:
-                                import openpyxl
-                                engine = "openpyxl"
-                            except Exception:
-                                engine = None
-                        if engine:
-                            with pd.ExcelWriter(CLIENTES_XLSX, engine=engine) as writer:
-                                df_new.to_excel(writer, index=False, sheet_name="Clientes")
-                    except Exception:
-                        pass
-                    # actualizar caché interno
-                    try:
-                        _CLIENTES_CACHE = df_new.copy()
-                        import time
-                        _CLIENTES_CACHE_TIME = time.time()
-                        # activar modo de vista que respeta el layout de la hoja
-                        try:
-                            st.session_state["use_sheet_layout"] = True
-                            # prefer human headers from the sheet if we stored them
-                            if st.session_state.get("sheet_human_headers"):
-                                st.session_state["sheet_columns_human"] = st.session_state.get("sheet_human_headers")
-                                st.session_state["sheet_internal_map"] = st.session_state.get("sheet_internal_map", {})
-                            else:
-                                st.session_state["sheet_columns"] = [c for c in SHEET_INTERNAL_COLUMNS if c in df_new.columns]
-                                st.session_state["sheet_header_map"] = dict(zip(SHEET_INTERNAL_COLUMNS, SHEET_HEADERS))
-                        except Exception:
-                            pass
-                    except Exception:
-                        pass
-                    st.success(f"Se recargaron {len(df_new)} registros desde Google Sheets y se actualizó el CSV local.")
-                    # reemplazar df_cli para el render actual
-                    df_cli = df_new
-            except Exception as e:
-                st.error(f"Error recargando desde Google Sheets: {e}")
-    with colr2:
-        st.write("")
+    # (refresh button moved next to the list header)
 
     st.subheader("➕ Agregar cliente")
     with st.expander("Formulario de alta", expanded=False):  # UI más limpia
@@ -5454,7 +5399,57 @@ with tab_cli:
                         st.success(f"Cliente {cid} creado ✅")
                         do_rerun()  # NEW: refresca todo
 
-    st.subheader("📋 Lista de clientes")
+    c_title, c_btn = st.columns([9,1])
+    with c_title:
+        st.subheader("📋 Lista de clientes")
+    with c_btn:
+        if st.button("🔁", key="refresh_from_gs_small", help="Refrescar desde Google Sheets"):
+            try:
+                df_new = cargar_clientes(force_reload=True)
+                if df_new is None or df_new.empty:
+                    st.warning("No se encontraron registros en Google Sheets al recargar.")
+                else:
+                    try:
+                        df_new.to_csv(CLIENTES_CSV, index=False, encoding="utf-8")
+                    except Exception:
+                        pass
+                    try:
+                        engine = None
+                        try:
+                            import xlsxwriter
+                            engine = "xlsxwriter"
+                        except Exception:
+                            try:
+                                import openpyxl
+                                engine = "openpyxl"
+                            except Exception:
+                                engine = None
+                        if engine:
+                            with pd.ExcelWriter(CLIENTES_XLSX, engine=engine) as writer:
+                                df_new.to_excel(writer, index=False, sheet_name="Clientes")
+                    except Exception:
+                        pass
+                    try:
+                        _CLIENTES_CACHE = df_new.copy()
+                        import time
+                        _CLIENTES_CACHE_TIME = time.time()
+                        try:
+                            st.session_state["use_sheet_layout"] = True
+                            if st.session_state.get("sheet_human_headers"):
+                                st.session_state["sheet_columns_human"] = st.session_state.get("sheet_human_headers")
+                                st.session_state["sheet_internal_map"] = st.session_state.get("sheet_internal_map", {})
+                            else:
+                                st.session_state["sheet_columns"] = [c for c in SHEET_INTERNAL_COLUMNS if c in df_new.columns]
+                                st.session_state["sheet_header_map"] = dict(zip(SHEET_INTERNAL_COLUMNS, SHEET_HEADERS))
+                        except Exception:
+                            pass
+                    except Exception:
+                        pass
+                    st.success(f"Se recargaron {len(df_new)} registros desde Google Sheets y se actualizó el CSV local.")
+                    df_cli = df_new
+                    st.experimental_rerun()
+            except Exception as e:
+                st.error(f"Error recargando desde Google Sheets: {e}")
     
     # Usar los datos ya filtrados del sidebar (df_ver)
     # que incluye todos los filtros aplicados correctamente
