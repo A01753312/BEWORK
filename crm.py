@@ -42,6 +42,13 @@ SCOPES = [
     "https://www.googleapis.com/auth/drive.metadata.readonly"
 ]
 
+# Carpeta raíz de Drive para documentos (configurable via secrets)
+# Si defines en secrets: DRIVE_MAIN_FOLDER_ID, se usará directamente ese ID
+# Si defines DRIVE_MAIN_FOLDER_NAME, se usará ese nombre para buscar/crear
+DRIVE_MAIN_FOLDER_ID = st.secrets.get("DRIVE_MAIN_FOLDER_ID", "")
+DRIVE_MAIN_FOLDER_NAME = st.secrets.get("DRIVE_MAIN_FOLDER_NAME", "CRM BEWORKK")
+_DRIVE_MAIN_FOLDER_ID_CACHE = None
+
 # Mostrar botón de conexión si aún no se ha autenticado
 if not st.session_state.drive_creds:
     # Construir URL de autorización manualmente con scopes correctos
@@ -2151,51 +2158,93 @@ from googleapiclient.http import MediaIoBaseUpload
 import io
 
 def crear_carpeta_cliente_drive(cliente_id, cliente_nombre=""):
-    """Crea o encuentra la carpeta del cliente en Google Drive."""
+    """Crea o encuentra la carpeta del cliente en Google Drive.
+    Usa carpeta raíz configurable: por ID (`DRIVE_MAIN_FOLDER_ID`) o por nombre (`DRIVE_MAIN_FOLDER_NAME`).
+    Soporta My Drive y Shared Drives usando `supportsAllDrives` y `includeItemsFromAllDrives`.
+    """
+    global _DRIVE_MAIN_FOLDER_ID_CACHE
     if not st.session_state.drive_creds:
         return None
-    
+
     drive_service = build("drive", "v3", credentials=st.session_state.drive_creds)
-    
-    # Buscar carpeta principal "CRM BEWORK"
-    query = "name='CRM BEWORK' and mimeType='application/vnd.google-apps.folder' and trashed=false"
-    results = drive_service.files().list(q=query, fields="files(id, name)").execute()
-    
-    if not results.get('files'):
-        # Crear carpeta principal
-        folder_metadata = {
-            'name': 'CRM BEWORK',
-            'mimeType': 'application/vnd.google-apps.folder'
-        }
-        main_folder = drive_service.files().create(body=folder_metadata, fields='id').execute()
-        main_folder_id = main_folder.get('id')
-    else:
-        main_folder_id = results['files'][0]['id']
-    
-    # Buscar carpeta del cliente - usar solo el nombre (sin ID)
+
+    # Resolver carpeta raíz
+    main_folder_id = None
+    if _DRIVE_MAIN_FOLDER_ID_CACHE:
+        main_folder_id = _DRIVE_MAIN_FOLDER_ID_CACHE
+    elif DRIVE_MAIN_FOLDER_ID:
+        # Verificar que el ID exista
+        try:
+            root_meta = drive_service.files().get(
+                fileId=DRIVE_MAIN_FOLDER_ID,
+                fields="id, name",
+                supportsAllDrives=True
+            ).execute()
+            main_folder_id = root_meta.get("id")
+        except Exception:
+            main_folder_id = None
+    if not main_folder_id:
+        # Buscar por nombre en My Drive y Shared Drives
+        query = (
+            f"name='{DRIVE_MAIN_FOLDER_NAME}' and "
+            "mimeType='application/vnd.google-apps.folder' and trashed=false"
+        )
+        results = drive_service.files().list(
+            q=query,
+            fields="files(id, name)",
+            includeItemsFromAllDrives=True,
+            supportsAllDrives=True
+        ).execute()
+        if not results.get('files'):
+            # Crear carpeta principal
+            folder_metadata = {
+                'name': DRIVE_MAIN_FOLDER_NAME,
+                'mimeType': 'application/vnd.google-apps.folder'
+            }
+            main_folder = drive_service.files().create(
+                body=folder_metadata,
+                fields='id',
+                supportsAllDrives=True
+            ).execute()
+            main_folder_id = main_folder.get('id')
+        else:
+            main_folder_id = results['files'][0]['id']
+        _DRIVE_MAIN_FOLDER_ID_CACHE = main_folder_id
+
+    # Nombre de carpeta del cliente
     if cliente_nombre:
-        # Limpiar el nombre para evitar problemas con caracteres especiales
         import re
         folder_name = re.sub(r'[<>:"/\\|?*]', '_', cliente_nombre.strip())
-        folder_name = folder_name[:100]  # Limitar longitud para evitar problemas
+        folder_name = folder_name[:100]
     else:
         folder_name = f"Cliente_{cliente_id}"
-    
-    # Buscar si ya existe una carpeta con este nombre
-    query = f"name='{folder_name}' and mimeType='application/vnd.google-apps.folder' and '{main_folder_id}' in parents and trashed=false"
-    results = drive_service.files().list(q=query, fields="files(id, name)").execute()
-    
+
+    # Buscar/crear carpeta del cliente bajo raíz
+    query = (
+        f"name='{folder_name}' and "
+        "mimeType='application/vnd.google-apps.folder' and trashed=false and "
+        f"'{main_folder_id}' in parents"
+    )
+    results = drive_service.files().list(
+        q=query,
+        fields="files(id, name)",
+        includeItemsFromAllDrives=True,
+        supportsAllDrives=True
+    ).execute()
+
     if not results.get('files'):
-        # Crear carpeta del cliente
         folder_metadata = {
             'name': folder_name,
             'mimeType': 'application/vnd.google-apps.folder',
             'parents': [main_folder_id]
         }
-        client_folder = drive_service.files().create(body=folder_metadata, fields='id').execute()
+        client_folder = drive_service.files().create(
+            body=folder_metadata,
+            fields='id',
+            supportsAllDrives=True
+        ).execute()
         return client_folder.get('id')
-    else:
-        return results['files'][0]['id']
+    return results['files'][0]['id']
 
 def subir_a_drive(uploaded_file, cliente_id=None, cliente_nombre=""):
     """Sube un archivo a Google Drive en la carpeta del cliente y devuelve el enlace público."""
