@@ -2253,29 +2253,34 @@ def subir_a_drive(uploaded_file, cliente_id=None, cliente_nombre=""):
         return None
 
     drive_service = build("drive", "v3", credentials=st.session_state.drive_creds)
-    
+
     # Si se especifica cliente, subir a su carpeta
     parent_folder_id = None
     if cliente_id:
         parent_folder_id = crear_carpeta_cliente_drive(cliente_id, cliente_nombre)
-    
+
     file_metadata = {"name": uploaded_file.name}
     if parent_folder_id:
         file_metadata["parents"] = [parent_folder_id]
-    
-    media = MediaIoBaseUpload(io.BytesIO(uploaded_file.getbuffer()), mimetype=uploaded_file.type)
-    file = drive_service.files().create(body=file_metadata, media_body=media, fields="id, webViewLink").execute()
-    
+
+    media = MediaIoBaseUpload(io.BytesIO(uploaded_file.getbuffer()), mimetype=getattr(uploaded_file, 'type', 'application/octet-stream'))
+    file = drive_service.files().create(
+        body=file_metadata,
+        media_body=media,
+        fields="id, webViewLink",
+        supportsAllDrives=True
+    ).execute()
+
     # Hacer el archivo público para visualización
     try:
         permission = {
             'type': 'anyone',
             'role': 'reader'
         }
-        drive_service.permissions().create(fileId=file.get('id'), body=permission).execute()
-    except:
-        pass  # Si no se puede hacer público, continuar
-    
+        drive_service.permissions().create(fileId=file.get('id'), body=permission, supportsAllDrives=True).execute()
+    except Exception:
+        pass
+
     return file.get("webViewLink")
 
 
@@ -2341,6 +2346,10 @@ def subir_docs(cid: str, files, prefijo: str = "", usar_drive: bool = True) -> l
                     errores += 1
             except Exception as e:
                 errores += 1
+        # Si falló todo intentando Drive, hacer fallback local
+        if exitosos == 0 and errores > 0:
+            st.warning("⚠️ Falló la subida a Drive; guardando localmente.")
+            return subir_docs(cid, files, prefijo=prefijo, usar_drive=False)
                 
         # Mostrar resumen al final
         if exitosos > 0:
