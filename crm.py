@@ -123,6 +123,35 @@ if "error" in query_params:
     # Quitar mensaje molesto: st.sidebar.error(f"❌ Error de autorización: {error}")
     st.query_params.clear()
 
+
+# Helper: verificar si hay credenciales válidas de Drive (y refrescarlas si es posible)
+def drive_connected() -> bool:
+    """Retorna True si hay credenciales de Drive utilizables en session_state.
+    Intenta refrescar credenciales si están expiradas y se dispone de refresh_token.
+    """
+    creds = st.session_state.get('drive_creds')
+    if not creds:
+        return False
+    try:
+        # Algunos objetos de credenciales (google.oauth2.credentials.Credentials)
+        # exponen 'valid' y 'expired'. Intentar usarlos cuando sea posible.
+        if getattr(creds, 'valid', False):
+            return True
+        # Si están expiradas pero existe refresh_token, intentar refrescar
+        if getattr(creds, 'expired', False) and getattr(creds, 'refresh_token', None):
+            try:
+                creds.refresh(Request())
+                st.session_state['drive_creds'] = creds
+                return True
+            except Exception:
+                return False
+        # Fallback: si existe token no vacío, considerarlo conectado
+        if getattr(creds, 'token', None):
+            return True
+    except Exception:
+        return False
+    return False
+
 # CSS personalizado para look profesional con tema claro BEWORK
 st.markdown("""
 <style>
@@ -2181,7 +2210,7 @@ def subir_docs(cid: str, files, prefijo: str = "", usar_drive: bool = True) -> l
         return []
     
     # Determinar si usar Google Drive
-    use_drive = usar_drive and st.session_state.get('drive_creds') is not None
+    use_drive = usar_drive and drive_connected()
     
     # Asegurar que `files` sea iterable (Streamlit acepta single file o lista)
     if files is None:
@@ -5432,7 +5461,7 @@ with tab_cli:
                 # si hay credenciales activas. Mostrar aviso si no hay conexión.
                 usar_google_drive = st.checkbox(
                     "📤 Guardar en Google Drive", 
-                    value=st.session_state.get('drive_creds') is not None,
+                    value=drive_connected(),
                     disabled=False,
                     help="Guarda documentos en Google Drive (requiere conexión)"
                 )
@@ -5903,7 +5932,7 @@ with tab_docs:
                 # Allow toggling; actual upload to Drive only happens when creds exist.
                 usar_google_drive_e = st.checkbox(
                     "📤 Guardar en Google Drive", 
-                    value=st.session_state.get('drive_creds') is not None,
+                    value=drive_connected(),
                     disabled=False,
                     help="Guarda documentos en Google Drive (requiere conexión)",
                     key=f"drive_option_{cid_sel}"
