@@ -70,6 +70,27 @@ else:
         st.query_params.clear()
         st.sidebar.success("Google Drive desconectado")
         st.rerun()
+    # Diagnostics: show lightweight drive connection details and log them
+    try:
+        conn = drive_connected()
+        token_present = bool(getattr(st.session_state.get('drive_creds'), 'token', None))
+        refresh_present = bool(getattr(st.session_state.get('drive_creds'), 'refresh_token', None))
+        expired = bool(getattr(st.session_state.get('drive_creds'), 'expired', False))
+        valid = bool(getattr(st.session_state.get('drive_creds'), 'valid', False))
+        st.sidebar.write("**Drive diagnóstico**")
+        st.sidebar.write("Estado conexión:", "✅ Conectado" if conn else "⚠️ No conectado o credenciales inválidas")
+        st.sidebar.write("Token presente:", str(token_present))
+        st.sidebar.write("Refresh token:", str(refresh_present))
+        st.sidebar.write("Expired:", str(expired))
+        st.sidebar.write("Valid:", str(valid))
+        try:
+            logp = DATA_DIR / "gs_debug.log"
+            with open(logp, "a", encoding="utf-8") as fh:
+                fh.write(f"{datetime.now().isoformat()} - drive_diag: conn={conn} token_present={token_present} refresh_present={refresh_present} expired={expired} valid={valid}\n")
+        except Exception:
+            pass
+    except Exception:
+        pass
 
 # Procesar el parámetro de autorización devuelto por Google
 query_params = st.query_params
