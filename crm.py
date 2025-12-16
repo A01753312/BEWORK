@@ -5428,10 +5428,12 @@ with tab_cli:
             # Opción para elegir dónde guardar
             col_storage1, col_storage2 = st.columns(2)
             with col_storage1:
+                # permitir al usuario marcar la opción; la subida a Drive solo ocurrirá
+                # si hay credenciales activas. Mostrar aviso si no hay conexión.
                 usar_google_drive = st.checkbox(
                     "📤 Guardar en Google Drive", 
                     value=st.session_state.get('drive_creds') is not None,
-                    disabled=st.session_state.get('drive_creds') is None,
+                    disabled=False,
                     help="Guarda documentos en Google Drive (requiere conexión)"
                 )
             with col_storage2:
@@ -5518,6 +5520,10 @@ with tab_cli:
                         subidos_lote = []
                         # Guardar archivos provenientes del mapa de uploaders generados arriba (fase1)
                         try:
+                            # Si el usuario marcó Drive pero no hay credenciales, avisar y desactivar
+                            if usar_google_drive and st.session_state.get('drive_creds') is None:
+                                st.warning("Has marcado 'Guardar en Google Drive' pero no hay conexión activa. Los archivos se guardarán localmente.")
+                                usar_google_drive = False
                             for rid, fobj in (files_map or {}).items():
                                 if fobj:
                                     pref = f"{rid}_"
@@ -5894,10 +5900,11 @@ with tab_docs:
             # Opción para elegir dónde guardar
             col_storage_e1, col_storage_e2 = st.columns(2)
             with col_storage_e1:
+                # Allow toggling; actual upload to Drive only happens when creds exist.
                 usar_google_drive_e = st.checkbox(
                     "📤 Guardar en Google Drive", 
                     value=st.session_state.get('drive_creds') is not None,
-                    disabled=st.session_state.get('drive_creds') is None,
+                    disabled=False,
                     help="Guarda documentos en Google Drive (requiere conexión)",
                     key=f"drive_option_{cid_sel}"
                 )
@@ -5926,6 +5933,10 @@ with tab_docs:
                 if submitted:
                     subidos_lote = []
                     try:
+                        # Si el usuario marcó Drive pero no hay credenciales, avisar y desactivar
+                        if usar_google_drive_e and st.session_state.get('drive_creds') is None:
+                            st.warning("Has marcado 'Guardar en Google Drive' pero no hay conexión activa. Los archivos se guardarán localmente.")
+                            usar_google_drive_e = False
                         for rid, fobj in (uploaded_map or {}).items():
                             if fobj:
                                 pref = f"{rid}_"
