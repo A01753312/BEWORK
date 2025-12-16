@@ -52,12 +52,32 @@ SCOPES = [
     "https://www.googleapis.com/auth/drive.metadata.readonly"
 ]
 
-# Cargar credenciales guardadas en disco si existen
+# Cargar credenciales guardadas en disco si existen (con logging)
+def _log_debug(msg: str):
+    try:
+        p = DATA_DIR / "gs_debug.log"
+        p.parent.mkdir(parents=True, exist_ok=True)
+        with open(p, "a", encoding="utf-8") as fh:
+            fh.write(f"{datetime.now().isoformat()} - {msg}\n")
+    except Exception:
+        pass
+
 try:
     _creds_path = DATA_DIR / "drive_creds.json"
     if st.session_state.get("drive_creds") is None and _creds_path.exists():
-        info = json.loads(_creds_path.read_text(encoding="utf-8"))
-        st.session_state.drive_creds = GoogleUserCredentials.from_authorized_user_info(info, scopes=SCOPES)
+        try:
+            info = json.loads(_creds_path.read_text(encoding="utf-8"))
+            st.session_state.drive_creds = GoogleUserCredentials.from_authorized_user_info(info, scopes=SCOPES)
+            _log_debug("Loaded drive credentials from disk")
+            # intentar refrescar si expiradas
+            try:
+                if getattr(st.session_state.drive_creds, 'expired', False) and getattr(st.session_state.drive_creds, 'refresh_token', None):
+                    st.session_state.drive_creds.refresh(Request())
+                    _log_debug("Refreshed persisted credentials successfully")
+            except Exception as e:
+                _log_debug(f"Error refreshing persisted creds: {repr(e)}")
+        except Exception as e:
+            _log_debug(f"Failed to load persisted drive creds: {repr(e)}")
 except Exception:
     pass
 
@@ -75,11 +95,28 @@ if not st.session_state.drive_creds:
     st.sidebar.markdown("---")
     st.sidebar.markdown("### 📂 Conexión a Google Drive")
     st.sidebar.markdown(f"[🔐 Conectar con Google Drive]({auth_url})")
-
+    # show recent debug lines if present
+    try:
+        logp = DATA_DIR / "gs_debug.log"
+        if logp.exists():
+            tail = "".join(logp.read_text(encoding="utf-8").splitlines()[-5:])
+            st.sidebar.caption("Últimos logs:")
+            st.sidebar.code(tail)
+    except Exception:
+        pass
 else:
     st.sidebar.markdown("---")
     st.sidebar.markdown("### 📂 Google Drive")
-    st.sidebar.success("✅ Conectado a Google Drive")
+    # Mostrar estado real de conexión
+    try:
+        conn = drive_connected()
+    except Exception:
+        conn = False
+    if conn:
+        st.sidebar.success("✅ Conectado a Google Drive")
+        st.sidebar.caption("Carpeta objetivo: CRM BEWORKK")
+    else:
+        st.sidebar.error("⚠️ Conexión con Google Drive inválida o caducada")
     
     # Botón para desconectar Google Drive
     if st.sidebar.button("🔌 Desconectar Drive", help="Cerrar sesión de Google Drive"):
@@ -133,17 +170,27 @@ if "code" in query_params and not st.session_state.drive_creds:
             )
             flow.redirect_uri = REDIRECT_URI
             flow.fetch_token(code=code)
-            
             # Guardar credenciales y marcar el código como procesado
             st.session_state.drive_creds = flow.credentials
             st.session_state.processed_auth_code = code
-            # Persistir credenciales en disco para futuras sesiones
+            # Persistir credenciales en disco para futuras sesiones (con logging)
             try:
                 info = json.loads(flow.credentials.to_json())
                 DATA_DIR.mkdir(parents=True, exist_ok=True)
                 (DATA_DIR / "drive_creds.json").write_text(json.dumps(info, ensure_ascii=False, indent=2), encoding="utf-8")
-            except Exception:
-                pass
+                try:
+                    p = DATA_DIR / "gs_debug.log"
+                    with open(p, "a", encoding="utf-8") as fh:
+                        fh.write(f"{datetime.now().isoformat()} - OAuth: fetched token and saved creds to disk\n")
+                except Exception:
+                    pass
+            except Exception as e:
+                try:
+                    p = DATA_DIR / "gs_debug.log"
+                    with open(p, "a", encoding="utf-8") as fh:
+                        fh.write(f"{datetime.now().isoformat()} - OAuth: error saving creds: {repr(e)}\n")
+                except Exception:
+                    pass
             
             # Limpiar el código de la URL para evitar reprocessing
             st.query_params.clear()
@@ -170,8 +217,46 @@ if "error" in query_params:
 
 # Helper: verificar si hay credenciales válidas de Drive (y refrescarlas si es posible)
 def drive_connected() -> bool:
-    # Compat: mantener firma; ahora solo revisa que existan credenciales
-    return st.session_state.get('drive_creds') is not None
+    """Verifica si las credenciales de Drive están operativas.
+    Intenta refrescar si es necesario y realiza una llamada mínima a la API para validar.
+    Registra resultados en `data/gs_debug.log` para diagnóstico.
+    """
+    creds = st.session_state.get('drive_creds')
+    def _log(msg: str):
+        try:
+            p = DATA_DIR / "gs_debug.log"
+            p.parent.mkdir(parents=True, exist_ok=True)
+            with open(p, "a", encoding="utf-8") as fh:
+                fh.write(f"{datetime.now().isoformat()} - {msg}\n")
+        except Exception:
+            pass
+
+    if not creds:
+        _log("drive_connected: no creds in session_state")
+        return False
+
+    # Intentar refrescar si el objeto lo requiere y tiene refresh_token
+    try:
+        if getattr(creds, 'expired', False) and getattr(creds, 'refresh_token', None):
+            try:
+                creds.refresh(Request())
+                st.session_state['drive_creds'] = creds
+                _log("drive_connected: refreshed credentials successfully")
+            except Exception as e:
+                _log(f"drive_connected: refresh failed: {repr(e)}")
+                return False
+    except Exception as e:
+        _log(f"drive_connected: checking expiry failed: {repr(e)}")
+
+    # Probar una llamada mínima a Drive
+    try:
+        svc = build("drive", "v3", credentials=st.session_state['drive_creds'])
+        svc.files().list(pageSize=1, fields="files(id)").execute()
+        _log("drive_connected: drive API call OK")
+        return True
+    except Exception as e:
+        _log(f"drive_connected: drive API call failed: {repr(e)}")
+        return False
 
 # CSS personalizado para look profesional con tema claro BEWORK
 st.markdown("""
