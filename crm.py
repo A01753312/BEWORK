@@ -98,7 +98,14 @@ else:
         st.rerun()
 
 # Procesar el parámetro de autorización devuelto por Google
-query_params = st.query_params
+# Leer query params de forma robusta (compat con versiones antiguas)
+try:
+    query_params = st.query_params
+except Exception:
+    try:
+        query_params = st.experimental_get_query_params()
+    except Exception:
+        query_params = {}
 if "code" in query_params and not st.session_state.drive_creds:
     code = query_params["code"]
     # Normalizar en caso de lista devuelta por Streamlit
