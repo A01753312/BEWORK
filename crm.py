@@ -95,7 +95,10 @@ else:
 # Procesar el parámetro de autorización devuelto por Google
 query_params = st.query_params
 if "code" in query_params and not st.session_state.drive_creds:
+    # st.query_params returns lists for values; extraer primer elemento si es lista
     code = query_params["code"]
+    if isinstance(code, (list, tuple)) and code:
+        code = code[0]
     # Solo procesar si no hemos procesado este código antes
     if "processed_auth_code" not in st.session_state or st.session_state.processed_auth_code != code:
         try:
@@ -116,7 +119,16 @@ if "code" in query_params and not st.session_state.drive_creds:
                 scopes=SCOPES
             )
             flow.redirect_uri = REDIRECT_URI
-            flow.fetch_token(code=code)
+            try:
+                flow.fetch_token(code=code)
+            except Exception as e:
+                try:
+                    logp = DATA_DIR / "gs_debug.log"
+                    with open(logp, "a", encoding="utf-8") as fh:
+                        fh.write(f"{datetime.now().isoformat()} - drive_auth_error: {repr(e)} code={str(code)[:10]}...\n")
+                except Exception:
+                    pass
+                raise
             
             # Guardar credenciales y marcar el código como procesado
             st.session_state.drive_creds = flow.credentials
