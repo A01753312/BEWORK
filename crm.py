@@ -104,6 +104,58 @@ if not st.session_state.drive_creds:
             st.sidebar.code(tail)
     except Exception:
         pass
+    # Fallback manual: permitir pegar el código de autorización si el redirect no funciona
+    try:
+        with st.sidebar.expander("¿Problemas con el redirect? Pega aquí el código de autorización"):
+            manual_code = st.text_input("Código de autorización (solo si falló el redirect)", key="manual_drive_code")
+            if manual_code:
+                if st.button("Procesar código manual", key="process_manual_drive_code"):
+                    try:
+                        client_config = {
+                            "web": {
+                                "client_id": CLIENT_ID,
+                                "client_secret": CLIENT_SECRET,
+                                "redirect_uris": [REDIRECT_URI],
+                                "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+                                "token_uri": "https://oauth2.googleapis.com/token",
+                                "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs"
+                            }
+                        }
+                        flow = Flow.from_client_config(client_config, scopes=SCOPES)
+                        flow.redirect_uri = REDIRECT_URI
+                        flow.fetch_token(code=manual_code)
+                        st.session_state.drive_creds = flow.credentials
+                        st.session_state.processed_auth_code = manual_code
+                        # persistir credenciales
+                        try:
+                            DATA_DIR.mkdir(parents=True, exist_ok=True)
+                            info = json.loads(flow.credentials.to_json())
+                            (DATA_DIR / "drive_creds.json").write_text(json.dumps(info, ensure_ascii=False, indent=2), encoding="utf-8")
+                            try:
+                                p = DATA_DIR / "gs_debug.log"
+                                with open(p, "a", encoding="utf-8") as fh:
+                                    fh.write(f"{datetime.now().isoformat()} - manual_oauth: fetched token and saved creds to disk\n")
+                            except Exception:
+                                pass
+                        except Exception as e:
+                            try:
+                                p = DATA_DIR / "gs_debug.log"
+                                with open(p, "a", encoding="utf-8") as fh:
+                                    fh.write(f"{datetime.now().isoformat()} - manual_oauth_save_fail: {repr(e)}\n")
+                            except Exception:
+                                pass
+                        st.success("✅ Código procesado y credenciales guardadas. Recarga la página si es necesario.")
+                        st.experimental_rerun()
+                    except Exception as e:
+                        st.error(f"Error al procesar el código: {e}")
+                        try:
+                            p = DATA_DIR / "gs_debug.log"
+                            with open(p, "a", encoding="utf-8") as fh:
+                                fh.write(f"{datetime.now().isoformat()} - manual_oauth_error: {repr(e)}\n")
+                        except Exception:
+                            pass
+    except Exception:
+        pass
 else:
     st.sidebar.markdown("---")
     st.sidebar.markdown("### 📂 Google Drive")
