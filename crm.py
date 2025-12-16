@@ -33,6 +33,7 @@ from google_auth_oauthlib.flow import Flow
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseUpload
 import json
+from google.oauth2.credentials import Credentials as GoogleUserCredentials
 CLIENT_ID = st.secrets["GOOGLE_CLIENT_ID"]
 CLIENT_SECRET = st.secrets["GOOGLE_CLIENT_SECRET"]
 REDIRECT_URI = st.secrets["REDIRECT_URI"]
@@ -42,6 +43,15 @@ SCOPES = [
     "https://www.googleapis.com/auth/drive.file",
     "https://www.googleapis.com/auth/drive.metadata.readonly"
 ]
+
+# Cargar credenciales guardadas en disco si existen
+try:
+    _creds_path = DATA_DIR / "drive_creds.json"
+    if st.session_state.get("drive_creds") is None and _creds_path.exists():
+        info = json.loads(_creds_path.read_text(encoding="utf-8"))
+        st.session_state.drive_creds = GoogleUserCredentials.from_authorized_user_info(info, scopes=SCOPES)
+except Exception:
+    pass
 
 # Mostrar botón de conexión si aún no se ha autenticado
 if not st.session_state.drive_creds:
@@ -68,6 +78,13 @@ else:
         st.session_state.drive_creds = None
         if "processed_auth_code" in st.session_state:
             del st.session_state.processed_auth_code
+        # Borrar credenciales persistidas
+        try:
+            _creds_path = DATA_DIR / "drive_creds.json"
+            if _creds_path.exists():
+                _creds_path.unlink()
+        except Exception:
+            pass
         st.query_params.clear()
         st.sidebar.success("Google Drive desconectado")
         st.rerun()
@@ -105,6 +122,13 @@ if "code" in query_params and not st.session_state.drive_creds:
             # Guardar credenciales y marcar el código como procesado
             st.session_state.drive_creds = flow.credentials
             st.session_state.processed_auth_code = code
+            # Persistir credenciales en disco para futuras sesiones
+            try:
+                info = json.loads(flow.credentials.to_json())
+                DATA_DIR.mkdir(parents=True, exist_ok=True)
+                (DATA_DIR / "drive_creds.json").write_text(json.dumps(info, ensure_ascii=False, indent=2), encoding="utf-8")
+            except Exception:
+                pass
             
             # Limpiar el código de la URL para evitar reprocessing
             st.query_params.clear()
