@@ -19,6 +19,14 @@ st.set_page_config(
     }
 )
 
+# Paths and data dirs (debe estar antes de la autenticación Drive)
+DATA_DIR = Path("data")
+DATA_DIR.mkdir(parents=True, exist_ok=True)
+DOCS_DIR = DATA_DIR / "docs"
+DOCS_DIR.mkdir(parents=True, exist_ok=True)
+CLIENTES_CSV = DATA_DIR / "clientes.csv"
+CLIENTES_XLSX = DATA_DIR / "clientes.xlsx"
+
 # Inicializar claves en session_state para evitar AttributeError
 if "drive_creds" not in st.session_state:
     st.session_state["drive_creds"] = None
@@ -1328,13 +1336,7 @@ def run_with_progress(func, steps: list, *args, **kwargs):
     
     return result
 
-# Paths and data dirs
-DATA_DIR = Path("data")
-DATA_DIR.mkdir(parents=True, exist_ok=True)
-DOCS_DIR = DATA_DIR / "docs"
-DOCS_DIR.mkdir(parents=True, exist_ok=True)
-CLIENTES_CSV = DATA_DIR / "clientes.csv"
-CLIENTES_XLSX = DATA_DIR / "clientes.xlsx"
+## (moved to top: DATA_DIR, DOCS_DIR, CLIENTES_CSV, CLIENTES_XLSX)
 
 # Categorías de documentos: claves a tipos permitidos (extensiones, None = any)
 DOC_CATEGORIAS = {
@@ -5474,6 +5476,8 @@ with tab_cli:
             with col_storage2:
                 if st.session_state.get('drive_creds') is None:
                     st.info("💡 Conecta Google Drive en el sidebar para activar esta opción")
+                else:
+                    st.success("✅ Google Drive conectado (carpeta: CRM BEWORKK)")
 
             # Mostrar uploaders de fase1 según producto seleccionado (en el form de alta)
             prod_upper = (producto_n or "").strip().upper()
@@ -5946,6 +5950,8 @@ with tab_docs:
             with col_storage_e2:
                 if st.session_state.get('drive_creds') is None:
                     st.info("💡 Conecta Google Drive en el sidebar para activar esta opción")
+                else:
+                    st.success("✅ Google Drive conectado (carpeta: CRM BEWORKK)")
             
             # Formulario de subida dinámico según producto y fase
             form_key = f"form_subir_docs_{cid_sel}"
