@@ -5737,9 +5737,11 @@ with tab_cli:
                     df_clientes_mostrar[_dcol] = df_temp_col.dt.date.astype(str).replace("NaT", "")
                 except Exception:
                     df_clientes_mostrar[_dcol] = df_clientes_mostrar[_dcol].astype(str).fillna("")
+        # Mapear use_container_width -> width param: True -> 'stretch', False -> 'content'
         ed = st.data_editor(
             df_clientes_mostrar,
             use_container_width=True,
+            width='stretch',
             hide_index=True,
             column_config=colcfg,
             key="editor_clientes"
@@ -5833,12 +5835,13 @@ with tab_cli:
             st.caption("Eliminar cliente (Siempre dar doble click para confirmar)")
             
             if can("delete_client"):
+                    # inicializar variable para evitar NameError si no hay ids_quick
+                    cid_del = ""
                     if ids_quick:
                         # mostrar opciones con 'ID - Nombre' para permitir borrar por nombre visualmente
                         opts = [""] + [f"{cid} - {get_nombre_by_id(cid)}" if get_nombre_by_id(cid) else str(cid) for cid in ids_quick]
                         sel = st.selectbox("Cliente a eliminar (ID - Nombre)", opts)
                         # extraer id del texto seleccionado
-                        cid_del = ""
                         if sel:
                             if " - " in sel:
                                 cid_del = sel.split(" - ", 1)[0]
