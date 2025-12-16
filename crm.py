@@ -32,6 +32,7 @@ if "pytest" in sys.modules and not st.session_state.get("auth_user"):
 from google_auth_oauthlib.flow import Flow
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseUpload
+import json
 CLIENT_ID = st.secrets["GOOGLE_CLIENT_ID"]
 CLIENT_SECRET = st.secrets["GOOGLE_CLIENT_SECRET"]
 REDIRECT_URI = st.secrets["REDIRECT_URI"]
@@ -41,13 +42,6 @@ SCOPES = [
     "https://www.googleapis.com/auth/drive.file",
     "https://www.googleapis.com/auth/drive.metadata.readonly"
 ]
-
-# Carpeta raíz de Drive para documentos (configurable via secrets)
-# Si defines en secrets: DRIVE_MAIN_FOLDER_ID, se usará directamente ese ID
-# Si defines DRIVE_MAIN_FOLDER_NAME, se usará ese nombre para buscar/crear
-DRIVE_MAIN_FOLDER_ID = st.secrets.get("DRIVE_MAIN_FOLDER_ID", "")
-DRIVE_MAIN_FOLDER_NAME = st.secrets.get("DRIVE_MAIN_FOLDER_NAME", "CRM BEWORKK")
-_DRIVE_MAIN_FOLDER_ID_CACHE = None
 
 # Mostrar botón de conexión si aún no se ha autenticado
 if not st.session_state.drive_creds:
@@ -77,35 +71,12 @@ else:
         st.query_params.clear()
         st.sidebar.success("Google Drive desconectado")
         st.rerun()
-    # Diagnostics: show lightweight drive connection details and log them
-    try:
-        conn = drive_connected()
-        token_present = bool(getattr(st.session_state.get('drive_creds'), 'token', None))
-        refresh_present = bool(getattr(st.session_state.get('drive_creds'), 'refresh_token', None))
-        expired = bool(getattr(st.session_state.get('drive_creds'), 'expired', False))
-        valid = bool(getattr(st.session_state.get('drive_creds'), 'valid', False))
-        st.sidebar.write("**Drive diagnóstico**")
-        st.sidebar.write("Estado conexión:", "✅ Conectado" if conn else "⚠️ No conectado o credenciales inválidas")
-        st.sidebar.write("Token presente:", str(token_present))
-        st.sidebar.write("Refresh token:", str(refresh_present))
-        st.sidebar.write("Expired:", str(expired))
-        st.sidebar.write("Valid:", str(valid))
-        try:
-            logp = DATA_DIR / "gs_debug.log"
-            with open(logp, "a", encoding="utf-8") as fh:
-                fh.write(f"{datetime.now().isoformat()} - drive_diag: conn={conn} token_present={token_present} refresh_present={refresh_present} expired={expired} valid={valid}\n")
-        except Exception:
-            pass
-    except Exception:
-        pass
 
 # Procesar el parámetro de autorización devuelto por Google
 query_params = st.query_params
 if "code" in query_params and not st.session_state.drive_creds:
-    # st.query_params returns lists for values; extraer primer elemento si es lista
     code = query_params["code"]
-    if isinstance(code, (list, tuple)) and code:
-        code = code[0]
+    
     # Solo procesar si no hemos procesado este código antes
     if "processed_auth_code" not in st.session_state or st.session_state.processed_auth_code != code:
         try:
@@ -126,16 +97,7 @@ if "code" in query_params and not st.session_state.drive_creds:
                 scopes=SCOPES
             )
             flow.redirect_uri = REDIRECT_URI
-            try:
-                flow.fetch_token(code=code)
-            except Exception as e:
-                try:
-                    logp = DATA_DIR / "gs_debug.log"
-                    with open(logp, "a", encoding="utf-8") as fh:
-                        fh.write(f"{datetime.now().isoformat()} - drive_auth_error: {repr(e)} code={str(code)[:10]}...\n")
-                except Exception:
-                    pass
-                raise
+            flow.fetch_token(code=code)
             
             # Guardar credenciales y marcar el código como procesado
             st.session_state.drive_creds = flow.credentials
@@ -166,31 +128,8 @@ if "error" in query_params:
 
 # Helper: verificar si hay credenciales válidas de Drive (y refrescarlas si es posible)
 def drive_connected() -> bool:
-    """Retorna True si hay credenciales de Drive utilizables en session_state.
-    Intenta refrescar credenciales si están expiradas y se dispone de refresh_token.
-    """
-    creds = st.session_state.get('drive_creds')
-    if not creds:
-        return False
-    try:
-        # Algunos objetos de credenciales (google.oauth2.credentials.Credentials)
-        # exponen 'valid' y 'expired'. Intentar usarlos cuando sea posible.
-        if getattr(creds, 'valid', False):
-            return True
-        # Si están expiradas pero existe refresh_token, intentar refrescar
-        if getattr(creds, 'expired', False) and getattr(creds, 'refresh_token', None):
-            try:
-                creds.refresh(Request())
-                st.session_state['drive_creds'] = creds
-                return True
-            except Exception:
-                return False
-        # Fallback: si existe token no vacío, considerarlo conectado
-        if getattr(creds, 'token', None):
-            return True
-    except Exception:
-        return False
-    return False
+    # Compat: mantener firma; ahora solo revisa que existan credenciales
+    return st.session_state.get('drive_creds') is not None
 
 # CSS personalizado para look profesional con tema claro BEWORK
 st.markdown("""
@@ -2158,93 +2097,51 @@ from googleapiclient.http import MediaIoBaseUpload
 import io
 
 def crear_carpeta_cliente_drive(cliente_id, cliente_nombre=""):
-    """Crea o encuentra la carpeta del cliente en Google Drive.
-    Usa carpeta raíz configurable: por ID (`DRIVE_MAIN_FOLDER_ID`) o por nombre (`DRIVE_MAIN_FOLDER_NAME`).
-    Soporta My Drive y Shared Drives usando `supportsAllDrives` y `includeItemsFromAllDrives`.
-    """
-    global _DRIVE_MAIN_FOLDER_ID_CACHE
+    """Crea o encuentra la carpeta del cliente en Google Drive."""
     if not st.session_state.drive_creds:
         return None
-
+    
     drive_service = build("drive", "v3", credentials=st.session_state.drive_creds)
-
-    # Resolver carpeta raíz
-    main_folder_id = None
-    if _DRIVE_MAIN_FOLDER_ID_CACHE:
-        main_folder_id = _DRIVE_MAIN_FOLDER_ID_CACHE
-    elif DRIVE_MAIN_FOLDER_ID:
-        # Verificar que el ID exista
-        try:
-            root_meta = drive_service.files().get(
-                fileId=DRIVE_MAIN_FOLDER_ID,
-                fields="id, name",
-                supportsAllDrives=True
-            ).execute()
-            main_folder_id = root_meta.get("id")
-        except Exception:
-            main_folder_id = None
-    if not main_folder_id:
-        # Buscar por nombre en My Drive y Shared Drives
-        query = (
-            f"name='{DRIVE_MAIN_FOLDER_NAME}' and "
-            "mimeType='application/vnd.google-apps.folder' and trashed=false"
-        )
-        results = drive_service.files().list(
-            q=query,
-            fields="files(id, name)",
-            includeItemsFromAllDrives=True,
-            supportsAllDrives=True
-        ).execute()
-        if not results.get('files'):
-            # Crear carpeta principal
-            folder_metadata = {
-                'name': DRIVE_MAIN_FOLDER_NAME,
-                'mimeType': 'application/vnd.google-apps.folder'
-            }
-            main_folder = drive_service.files().create(
-                body=folder_metadata,
-                fields='id',
-                supportsAllDrives=True
-            ).execute()
-            main_folder_id = main_folder.get('id')
-        else:
-            main_folder_id = results['files'][0]['id']
-        _DRIVE_MAIN_FOLDER_ID_CACHE = main_folder_id
-
-    # Nombre de carpeta del cliente
+    
+    # Buscar carpeta principal "CRM Bework"
+    query = "name='CRM Bework' and mimeType='application/vnd.google-apps.folder' and trashed=false"
+    results = drive_service.files().list(q=query, fields="files(id, name)").execute()
+    
+    if not results.get('files'):
+        # Crear carpeta principal
+        folder_metadata = {
+            'name': 'CRM Bework',
+            'mimeType': 'application/vnd.google-apps.folder'
+        }
+        main_folder = drive_service.files().create(body=folder_metadata, fields='id').execute()
+        main_folder_id = main_folder.get('id')
+    else:
+        main_folder_id = results['files'][0]['id']
+    
+    # Buscar carpeta del cliente - usar solo el nombre (sin ID)
     if cliente_nombre:
+        # Limpiar el nombre para evitar problemas con caracteres especiales
         import re
         folder_name = re.sub(r'[<>:"/\\|?*]', '_', cliente_nombre.strip())
-        folder_name = folder_name[:100]
+        folder_name = folder_name[:100]  # Limitar longitud para evitar problemas
     else:
         folder_name = f"Cliente_{cliente_id}"
-
-    # Buscar/crear carpeta del cliente bajo raíz
-    query = (
-        f"name='{folder_name}' and "
-        "mimeType='application/vnd.google-apps.folder' and trashed=false and "
-        f"'{main_folder_id}' in parents"
-    )
-    results = drive_service.files().list(
-        q=query,
-        fields="files(id, name)",
-        includeItemsFromAllDrives=True,
-        supportsAllDrives=True
-    ).execute()
-
+    
+    # Buscar si ya existe una carpeta con este nombre
+    query = f"name='{folder_name}' and mimeType='application/vnd.google-apps.folder' and '{main_folder_id}' in parents and trashed=false"
+    results = drive_service.files().list(q=query, fields="files(id, name)").execute()
+    
     if not results.get('files'):
+        # Crear carpeta del cliente
         folder_metadata = {
             'name': folder_name,
             'mimeType': 'application/vnd.google-apps.folder',
             'parents': [main_folder_id]
         }
-        client_folder = drive_service.files().create(
-            body=folder_metadata,
-            fields='id',
-            supportsAllDrives=True
-        ).execute()
+        client_folder = drive_service.files().create(body=folder_metadata, fields='id').execute()
         return client_folder.get('id')
-    return results['files'][0]['id']
+    else:
+        return results['files'][0]['id']
 
 def subir_a_drive(uploaded_file, cliente_id=None, cliente_nombre=""):
     """Sube un archivo a Google Drive en la carpeta del cliente y devuelve el enlace público."""
@@ -2253,34 +2150,29 @@ def subir_a_drive(uploaded_file, cliente_id=None, cliente_nombre=""):
         return None
 
     drive_service = build("drive", "v3", credentials=st.session_state.drive_creds)
-
+    
     # Si se especifica cliente, subir a su carpeta
     parent_folder_id = None
     if cliente_id:
         parent_folder_id = crear_carpeta_cliente_drive(cliente_id, cliente_nombre)
-
+    
     file_metadata = {"name": uploaded_file.name}
     if parent_folder_id:
         file_metadata["parents"] = [parent_folder_id]
-
-    media = MediaIoBaseUpload(io.BytesIO(uploaded_file.getbuffer()), mimetype=getattr(uploaded_file, 'type', 'application/octet-stream'))
-    file = drive_service.files().create(
-        body=file_metadata,
-        media_body=media,
-        fields="id, webViewLink",
-        supportsAllDrives=True
-    ).execute()
-
+    
+    media = MediaIoBaseUpload(io.BytesIO(uploaded_file.getbuffer()), mimetype=uploaded_file.type)
+    file = drive_service.files().create(body=file_metadata, media_body=media, fields="id, webViewLink").execute()
+    
     # Hacer el archivo público para visualización
     try:
         permission = {
             'type': 'anyone',
             'role': 'reader'
         }
-        drive_service.permissions().create(fileId=file.get('id'), body=permission, supportsAllDrives=True).execute()
-    except Exception:
-        pass
-
+        drive_service.permissions().create(fileId=file.get('id'), body=permission).execute()
+    except:
+        pass  # Si no se puede hacer público, continuar
+    
     return file.get("webViewLink")
 
 
@@ -2296,8 +2188,8 @@ def subir_docs(cid: str, files, prefijo: str = "", usar_drive: bool = True) -> l
     if not cid:
         return []
     
-    # Determinar si usar Google Drive
-    use_drive = usar_drive and drive_connected()
+    # Determinar si usar Google Drive (simple: sólo revisa que existan credenciales)
+    use_drive = usar_drive and st.session_state.get('drive_creds') is not None
     
     # Asegurar que `files` sea iterable (Streamlit acepta single file o lista)
     if files is None:
@@ -2346,10 +2238,6 @@ def subir_docs(cid: str, files, prefijo: str = "", usar_drive: bool = True) -> l
                     errores += 1
             except Exception as e:
                 errores += 1
-        # Si falló todo intentando Drive, hacer fallback local
-        if exitosos == 0 and errores > 0:
-            st.warning("⚠️ Falló la subida a Drive; guardando localmente.")
-            return subir_docs(cid, files, prefijo=prefijo, usar_drive=False)
                 
         # Mostrar resumen al final
         if exitosos > 0:
