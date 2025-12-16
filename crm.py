@@ -5723,7 +5723,8 @@ with tab_cli:
                 "estatus": st.column_config.SelectboxColumn("Estatus", options=ESTATUS_OPCIONES, required=True)
             }
 
-        df_clientes_mostrar["sucursal"] = df_clientes_mostrar["sucursal"].where(df_clientes_mostrar["sucursal"].isin(SUCURSALES), "")
+        if "sucursal" in df_clientes_mostrar.columns:
+            df_clientes_mostrar["sucursal"] = df_clientes_mostrar["sucursal"].where(df_clientes_mostrar["sucursal"].isin(SUCURSALES), "")
         # antes de mostrar el editor, ordenar df_clientes_mostrar por fechas asc
         df_clientes_mostrar = sort_df_by_dates(df_clientes_mostrar)  # apply ordering
         # FIX: data_editor no acepta ColumnDataKind.DATETIME si la columna está configurada como TextColumn.
