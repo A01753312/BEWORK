@@ -76,6 +76,9 @@ else:
 query_params = st.query_params
 if "code" in query_params and not st.session_state.drive_creds:
     code = query_params["code"]
+    # Normalizar en caso de lista devuelta por Streamlit
+    if isinstance(code, (list, tuple)):
+        code = code[0] if code else ""
     
     # Solo procesar si no hemos procesado este código antes
     if "processed_auth_code" not in st.session_state or st.session_state.processed_auth_code != code:
@@ -2103,14 +2106,14 @@ def crear_carpeta_cliente_drive(cliente_id, cliente_nombre=""):
     
     drive_service = build("drive", "v3", credentials=st.session_state.drive_creds)
     
-    # Buscar carpeta principal "CRM Bework"
-    query = "name='CRM Bework' and mimeType='application/vnd.google-apps.folder' and trashed=false"
+    # Buscar carpeta principal "CRM BEWORKK"
+    query = "name='CRM BEWORKK' and mimeType='application/vnd.google-apps.folder' and trashed=false"
     results = drive_service.files().list(q=query, fields="files(id, name)").execute()
     
     if not results.get('files'):
         # Crear carpeta principal
         folder_metadata = {
-            'name': 'CRM Bework',
+            'name': 'CRM BEWORKK',
             'mimeType': 'application/vnd.google-apps.folder'
         }
         main_folder = drive_service.files().create(body=folder_metadata, fields='id').execute()
