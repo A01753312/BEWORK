@@ -679,12 +679,7 @@ def calcular_analisis_financiero(df: pd.DataFrame) -> dict:
     # Limpiar y convertir montos
     df_temp = df.copy()
     df_temp['monto_propuesta_num'] = df_temp['monto_propuesta'].apply(limpiar_monto)
-    
-    # Usar monto_final si existe, sino monto_propuesta
-    if 'monto_final' in df_temp.columns:
-        df_temp['monto_final_num'] = df_temp['monto_final'].apply(limpiar_monto)
-    else:
-        df_temp['monto_final_num'] = df_temp['monto_propuesta_num']
+    df_temp['monto_final_num'] = df_temp['monto_final'].apply(limpiar_monto)
     
     # Calcular métricas
     total_propuesto = df_temp['monto_propuesta_num'].sum()
@@ -986,8 +981,8 @@ def generar_presentacion_dashboard(df_cli: pd.DataFrame) -> bytes:
             return 0.0
     
     df_temp['monto_analisis'] = df_temp.apply(
-        lambda row: limpiar_monto_simple(row.get('monto_final', row.get('monto_propuesta', ''))) if row['estatus'] == 'DISPERSADO' 
-        else limpiar_monto_simple(row.get('monto_propuesta', '')), axis=1
+        lambda row: limpiar_monto_simple(row['monto_final']) if row['estatus'] == 'DISPERSADO' 
+        else limpiar_monto_simple(row['monto_propuesta']), axis=1
     )
     df_analisis = df_temp[df_temp['monto_analisis'] > 0].copy()
     
@@ -2854,18 +2849,36 @@ def cargar_clientes(force_reload: bool = False) -> pd.DataFrame:
             if ws is None:
                 raise Exception("No connection")
                 
-            df = get_as_dataframe(ws, evaluate_formulas=True, dtype=str, header=0).dropna(how="all")
-            if df is None or df.empty:
-                df = pd.DataFrame(columns=COLUMNS)
-            else:
-                # Mostrar mensaje solo al iniciar sesión
-                if 'gs_first_load' not in st.session_state:
-                    st.session_state['gs_first_load'] = True
-                    show_once_success("gsheets_load", f"Datos cargados desde Google Sheets: {len(df)} registros")
-                
-                # Guardar las columnas originales del sheet para mostrarlas tal cual
-                st.session_state["sheet_human_headers"] = list(df.columns)
-                st.session_state["use_sheet_layout"] = True
+            # Leer preferentemente con get_all_records() (más robusto ante encabezados humanos)
+            try:
+                records = ws.get_all_records()
+                if records:
+                    df = pd.DataFrame(records).astype(str).fillna("")
+                    # Mostrar mensaje solo al iniciar sesión
+                    if 'gs_first_load' not in st.session_state:
+                        st.session_state['gs_first_load'] = True
+                        show_once_success("gsheets_load", f"Datos cargados desde Google Sheets: {len(df)} registros")
+                else:
+                    # Intentar lectura via gspread_dataframe como fallback
+                    df = get_as_dataframe(ws, evaluate_formulas=True, dtype=str, header=0).dropna(how="all")
+                    if df is None or df.empty:
+                        df = pd.DataFrame(columns=COLUMNS)
+                    else:
+                        if 'gs_first_load' not in st.session_state:
+                            st.session_state['gs_first_load'] = True
+                            show_once_success("gsheets_load", f"Datos cargados desde Google Sheets: {len(df)} registros")
+            except Exception:
+                # Fallback estricto a get_as_dataframe si get_all_records falla
+                try:
+                    df = get_as_dataframe(ws, evaluate_formulas=True, dtype=str, header=0).dropna(how="all")
+                    if df is None or df.empty:
+                        df = pd.DataFrame(columns=COLUMNS)
+                    else:
+                        if 'gs_first_load' not in st.session_state:
+                            st.session_state['gs_first_load'] = True
+                            show_once_success("gsheets_load", f"Datos cargados desde Google Sheets: {len(df)} registros")
+                except Exception:
+                    df = pd.DataFrame(columns=COLUMNS)
 
             # Normalizar encabezados humanos del sheet a nombres internos (si aplica)
             try:
@@ -2874,19 +2887,11 @@ def cargar_clientes(force_reload: bool = False) -> pd.DataFrame:
 
                 header_map = { _col_key(h): internal for h, internal in zip(SHEET_HEADERS, SHEET_INTERNAL_COLUMNS) }
                 rename_map = {}
-                mapping_human_to_internal = {}
-                
                 for orig in list(df.columns):
                     k = _col_key(orig)
                     if k in header_map:
                         rename_map[orig] = header_map[k]
-                        mapping_human_to_internal[orig] = header_map[k]
-                    else:
-                        # Mantener columnas que no mapean (podrían ser nuevas del sheet)
-                        mapping_human_to_internal[orig] = orig
 
-                st.session_state["sheet_internal_map"] = mapping_human_to_internal
-                
                 if rename_map:
                     df = df.rename(columns=rename_map)
             except Exception:
@@ -2921,21 +2926,12 @@ def cargar_clientes(force_reload: bool = False) -> pd.DataFrame:
 
                 est_norm = {_norm_key(x) for x in est_all if str(x).strip()}
 
-                # Solo intentar detectar estatus si la columna no existe o está completamente vacía
                 need_est_col = True
                 if "estatus" in df.columns:
-                    # Verificar si tiene al menos algunos datos
+                    # si existe pero tiene datos vacíos, aún podemos intentar detectar mejor
                     try:
-                        non_empty_count = df["estatus"].astype(str).str.strip().replace("", _np.nan).notna().sum()
-                        if non_empty_count > 0:
+                        if df["estatus"].astype(str).str.strip().replace("", _np.nan).notna().any():
                             need_est_col = False
-                            # Log para debug
-                            try:
-                                logp = DATA_DIR / "gs_debug.log"
-                                with open(logp, "a", encoding="utf-8") as fh:
-                                    fh.write(f"{datetime.now().isoformat()} - cargar_clientes: columna 'estatus' encontrada con {non_empty_count} valores no vacíos\n")
-                            except Exception:
-                                pass
                     except Exception:
                         pass
 
@@ -2949,12 +2945,6 @@ def cargar_clientes(force_reload: bool = False) -> pd.DataFrame:
                                 # renombrar esta columna a 'estatus' si aún no existe
                                 if "estatus" not in df.columns:
                                     df = df.rename(columns={col: "estatus"})
-                                    try:
-                                        logp = DATA_DIR / "gs_debug.log"
-                                        with open(logp, "a", encoding="utf-8") as fh:
-                                            fh.write(f"{datetime.now().isoformat()} - cargar_clientes: detectada columna de estatus en '{col}'\n")
-                                    except Exception:
-                                        pass
                                     break
                         except Exception:
                             continue
@@ -2971,16 +2961,58 @@ def cargar_clientes(force_reload: bool = False) -> pd.DataFrame:
             except Exception:
                 pass
 
-            # Solo añadir columnas críticas que no existen (no todas las de COLUMNS)
-            critical_columns = ["id", "nombre", "estatus", "producto"]
-            for c in critical_columns:
+            df = df.fillna("")
+            for c in COLUMNS:
                 if c not in df.columns:
                     df[c] = ""
 
-            # Ya no necesitamos rescatar estatus aquí, lo hicimos arriba de manera más inteligente
+            # Si la columna 'estatus' existe pero está vacía, intentar rescatarla
+            try:
+                if "estatus" in df.columns:
+                    try:
+                        est_empty = df["estatus"].astype(str).str.strip().replace("", _np.nan).isna().all()
+                    except Exception:
+                        est_empty = False
+                else:
+                    est_empty = True
 
-            # Retornar el dataframe con todas sus columnas (no filtrar por COLUMNS)
-            result = df.fillna("").astype(str)
+                if est_empty:
+                    # buscar la columna con mayor proporción de valores que coinciden con catálogos de estatus
+                    best_col = None
+                    best_ratio = 0.0
+                    for col in df.columns:
+                        if col == "estatus":
+                            continue
+                        try:
+                            vals = df[col].astype(str).str.strip()
+                            non_empty = vals[vals != ""]
+                            if len(non_empty) == 0:
+                                continue
+                            vals_norm = {_norm_key(v) for v in non_empty[:200].tolist()}
+                            match_count = len([v for v in vals_norm if v in est_norm])
+                            ratio = match_count / max(1, len(vals_norm))
+                            if ratio > best_ratio:
+                                best_ratio = ratio
+                                best_col = col
+                        except Exception:
+                            continue
+
+                    if best_col and best_ratio >= 0.30:
+                        # Assign values and log
+                        try:
+                            df["estatus"] = df[best_col].astype(str)
+                            try:
+                                logp = DATA_DIR / "gs_debug.log"
+                                with open(logp, "a", encoding="utf-8") as fh:
+                                    fh.write(f"{datetime.now().isoformat()} - cargar_clientes: rescued 'estatus' from column={best_col} ratio={best_ratio}\n")
+                            except Exception:
+                                pass
+                        except Exception:
+                            pass
+            except Exception:
+                pass
+
+            result = df[[c for c in COLUMNS if c in df.columns]].astype(str).fillna("")
             
             # Actualizar caché
             _CLIENTES_CACHE = result.copy()
@@ -4382,9 +4414,6 @@ def _force_refresh():
         _CLIENTES_CACHE_TIME = 0
         _HISTORIAL_CACHE = None
         _HISTORIAL_CACHE_TIME = 0
-        # Limpiar flag de primera carga para permitir mensajes de recarga
-        if 'gs_first_load' in st.session_state:
-            del st.session_state['gs_first_load']
         # Reset filtros también
         _reset_filters()
         # Marcar que se necesita actualizar (sin llamar st.rerun() en callback)
@@ -4736,12 +4765,11 @@ with tab_dash:
         
         st.markdown("---")
         
-        # 🔄 TABS SECUNDARIAS PARA ANÁLISIS DETALLADO
-        dash_tab1, dash_tab2, dash_tab3, dash_tab4 = st.tabs([
+        # �🔄 TABS SECUNDARIAS PARA ANÁLISIS DETALLADO
+        dash_tab1, dash_tab2, dash_tab3 = st.tabs([
             "📊 Por Estatus", 
             "📅 Por Fecha", 
-            "🏢 Por Sucursal/Asesor",
-            "💼 Análisis de Ventas"
+            "🏢 Por Sucursal/Asesor"
         ])
         
         # 📊 TAB 1: POR ESTATUS
@@ -4818,7 +4846,7 @@ with tab_dash:
                         color=alt.value("black")
                     )
                     
-                    st.altair_chart(chart + text, width='stretch')
+                    st.altair_chart(chart + text, use_container_width=True)
         
         # 📅 TAB 2: POR FECHA
         with dash_tab2:
@@ -4937,7 +4965,7 @@ with tab_dash:
                                 title="Evolución de Clientes por Mes"
                             )
                             
-                            st.altair_chart(line_chart, width='stretch')
+                            st.altair_chart(line_chart, use_container_width=True)
                         
                         # Gráfico de dona: Distribución por estatus en el período
                         st.markdown("**Distribución por estatus en el período:**")
@@ -4964,7 +4992,7 @@ with tab_dash:
                             title="Distribución por Estatus"
                         )
                         
-                        st.altair_chart(dona_chart, width='stretch')
+                        st.altair_chart(dona_chart, use_container_width=True)
         
         # 🏢 TAB 3: POR SUCURSAL/ASESOR
         with dash_tab3:
@@ -4993,7 +5021,7 @@ with tab_dash:
                             sucursal_df.assign(
                                 **{"Porcentaje": sucursal_df["porcentaje"].astype(str) + "%"}
                             )[["sucursal", "cantidad", "Porcentaje"]],
-                            width='stretch',
+                            use_container_width=True,
                             hide_index=True
                         )
                     
@@ -5014,7 +5042,7 @@ with tab_dash:
                             title="Distribución por Sucursal"
                         )
                         
-                        st.altair_chart(chart_suc, width='stretch')
+                        st.altair_chart(chart_suc, use_container_width=True)
             
             # SUB-TAB: ASESORES
             with sub_tab2:
@@ -5070,7 +5098,7 @@ with tab_dash:
                             asesor_df.assign(
                                 **{"Porcentaje": asesor_df["porcentaje"].astype(str) + "%"}
                             )[["asesor", "cantidad", "Porcentaje"]],
-                            width='stretch',
+                            use_container_width=True,
                             hide_index=True
                         )
                     
@@ -5093,7 +5121,7 @@ with tab_dash:
                             title="Distribución por Asesor"
                         )
                         
-                        st.altair_chart(chart_ases, width='stretch')
+                        st.altair_chart(chart_ases, use_container_width=True)
             
             # SUB-TAB: FUENTES
             with sub_tab3:
@@ -5115,7 +5143,7 @@ with tab_dash:
                             fuente_df.assign(
                                 **{"Porcentaje": fuente_df["porcentaje"].astype(str) + "%"}
                             )[["fuente", "cantidad", "Porcentaje"]],
-                            width='stretch',
+                            use_container_width=True,
                             hide_index=True
                         )
                     
@@ -5137,259 +5165,181 @@ with tab_dash:
                             title="Distribución por Fuente de Captación"
                         )
                         
-                        st.altair_chart(chart_fuente, width='stretch')
+                        st.altair_chart(chart_fuente, use_container_width=True)
+
+        # 💰 ANÁLISIS FINANCIERO AVANZADO - CARTERA BEWORK
+        st.markdown("---")
+        st.subheader(" Análisis Financiero — Cartera BEWORK")
         
-        # 💼 TAB 4: ANÁLISIS DE VENTAS
-        with dash_tab4:
-            st.subheader("📈 Análisis de Ventas y Productos")
+        # Preparar datos con limpieza
+        df_temp = df_cli.copy()
+        
+        def limpiar_monto_simple(monto_str):
+            if pd.isna(monto_str) or str(monto_str).strip() == "":
+                return 0.0
+            try:
+                import re
+                clean = re.sub(r'[,$\s]', '', str(monto_str))
+                return float(clean)
+            except:
+                return 0.0
+        
+        # Usar monto_final para dispersados, monto_propuesta para el resto
+        df_temp['monto_analisis'] = df_temp.apply(
+            lambda row: limpiar_monto_simple(row['monto_final']) if row['estatus'] == 'DISPERSADO' 
+            else limpiar_monto_simple(row['monto_propuesta']), axis=1
+        )
+        
+        # Filtrar solo clientes con monto > 0
+        df_analisis = df_temp[df_temp['monto_analisis'] > 0].copy()
+        
+        if df_analisis.empty:
+            st.info("No hay datos con montos registrados para análisis.")
+        else:
+            # === MODELO FINANCIERO REFINADO ===
+            # Tres componentes: Probabilidad de Conversión, Factor de Retorno, Riesgo
+            prob_conversion = {
+                "DISPERSADO": 1.00,
+                "APROB. CON PROPUESTA": 0.75,
+                "PROPUESTA": 0.75,  # Alias para propuesta
+                "PEND. ACEPT. CLIENTE": 0.65,
+                "PENDIENTE CLIENTE": 0.65,  # Alias
+                "PEND. DOC. PARA EVALUACION": 0.45,
+                "PENDIENTE DOC": 0.45,  # Alias
+                "EN ONBOARDING": 0.55,
+                "RECH. CLIENTE CANCELA": 0.10,
+                "RECH. SOBREENDEUDAMIENTO": 0.05,
+            }
             
-            # Sub-tabs para diferentes vistas de ventas
-            ventas_tab1, ventas_tab2, ventas_tab3 = st.tabs([
-                "📦 Por Producto", 
-                "💰 Resumen Financiero",
-                "📊 Ingresos por Canal"
-            ])
+            factor_retorno = {
+                "DISPERSADO": 1.00,
+                "APROB. CON PROPUESTA": 0.85,
+                "PROPUESTA": 0.85,
+                "PEND. ACEPT. CLIENTE": 0.80,
+                "PENDIENTE CLIENTE": 0.80,
+                "PEND. DOC. PARA EVALUACION": 0.70,
+                "PENDIENTE DOC": 0.70,
+                "EN ONBOARDING": 0.75,
+                "RECH. CLIENTE CANCELA": 0.00,
+                "RECH. SOBREENDEUDAMIENTO": 0.00,
+            }
             
-            # SUB-TAB: POR PRODUCTO
-            with ventas_tab1:
-                st.markdown("#### Análisis por Producto")
-                
-                # Contar clientes por producto
-                producto_counts = df_cli["producto"].fillna("(Sin producto)").value_counts()
-                producto_counts = producto_counts[producto_counts > 0]
-                
-                if producto_counts.empty:
-                    st.info("No hay datos de productos para mostrar.")
-                else:
-                    producto_df = producto_counts.reset_index()
-                    producto_df.columns = ["producto", "clientes"]
-                    producto_df["porcentaje"] = (producto_df["clientes"] / len(df_cli) * 100).round(1)
-                    
-                    # Calcular montos por producto
-                    df_temp_prod = df_cli.copy()
-                    def limpiar_monto_local(m):
-                        if pd.isna(m) or str(m).strip() == "": return 0.0
-                        try:
-                            import re
-                            return float(re.sub(r'[,$\s]', '', str(m)))
-                        except: return 0.0
-                    df_temp_prod["monto_num"] = df_temp_prod["monto_propuesta"].apply(limpiar_monto_local)
-                    
-                    montos_por_producto = df_temp_prod.groupby("producto")["monto_num"].agg([
-                        ('total', 'sum'),
-                        ('promedio', 'mean'),
-                        ('dispersados', lambda x: df_temp_prod.loc[x.index][df_temp_prod.loc[x.index]["estatus"] == "DISPERSADO"]["monto_num"].sum())
-                    ]).reset_index()
-                    
-                    # Merge con conteos
-                    producto_completo = producto_df.merge(montos_por_producto, on="producto", how="left")
-                    producto_completo = producto_completo.fillna(0)
-                    
-                    # Mostrar en dos columnas
-                    col1, col2 = st.columns(2)
-                    
-                    with col1:
-                        st.markdown("**📊 Clientes por Producto**")
-                        # Gráfico de barras
-                        chart_prod = alt.Chart(producto_df).mark_bar(
-                            cornerRadiusTopRight=8,
-                            cornerRadiusBottomRight=8
-                        ).encode(
-                            x=alt.X("clientes:Q", axis=alt.Axis(title="Número de Clientes")),
-                            y=alt.Y("producto:N", sort="-x", axis=alt.Axis(title="")),
-                            color=alt.Color("producto:N", scale=alt.Scale(scheme="tableau10"), legend=None),
-                            tooltip=[
-                                alt.Tooltip("producto:N", title="Producto"),
-                                alt.Tooltip("clientes:Q", title="Clientes"),
-                                alt.Tooltip("porcentaje:Q", title="% del Total", format=".1f")
-                            ]
-                        ).properties(height=200)
-                        
-                        st.altair_chart(chart_prod, width='stretch')
-                        
-                        # Tabla con detalles
-                        st.markdown("**Detalle:**")
-                        for _, row in producto_df.iterrows():
-                            st.metric(
-                                label=row["producto"],
-                                value=f"{int(row['clientes'])} clientes",
-                                delta=f"{row['porcentaje']}% del total"
-                            )
-                    
-                    with col2:
-                        st.markdown("**💵 Ventas por Producto**")
-                        
-                        # Gráfico de montos
-                        chart_montos = alt.Chart(producto_completo).mark_bar(
-                            cornerRadiusTopRight=8,
-                            cornerRadiusBottomRight=8,
-                            color="#4DA8FF"
-                        ).encode(
-                            x=alt.X("total:Q", axis=alt.Axis(title="Monto Total ($)", format="$,.0f")),
-                            y=alt.Y("producto:N", sort="-x", axis=alt.Axis(title="")),
-                            tooltip=[
-                                alt.Tooltip("producto:N", title="Producto"),
-                                alt.Tooltip("total:Q", title="Total Propuesto", format="$,.0f"),
-                                alt.Tooltip("promedio:Q", title="Promedio", format="$,.0f"),
-                                alt.Tooltip("dispersados:Q", title="Dispersado", format="$,.0f")
-                            ]
-                        ).properties(height=200)
-                        
-                        st.altair_chart(chart_montos, width='stretch')
-                        
-                        # Métricas financieras por producto
-                        st.markdown("**Detalle Financiero:**")
-                        for _, row in producto_completo.iterrows():
-                            with st.expander(f"💼 {row['producto']}", expanded=False):
-                                col_a, col_b, col_c = st.columns(3)
-                                with col_a:
-                                    st.metric("Total Propuesto", formatear_monto(row['total']))
-                                with col_b:
-                                    st.metric("Promedio", formatear_monto(row['promedio']))
-                                with col_c:
-                                    st.metric("Dispersado", formatear_monto(row['dispersados']))
+            riesgo_pct = {
+                "DISPERSADO": 5,
+                "APROB. CON PROPUESTA": 20,
+                "PROPUESTA": 20,
+                "PEND. ACEPT. CLIENTE": 30,
+                "PENDIENTE CLIENTE": 30,
+                "PEND. DOC. PARA EVALUACION": 45,
+                "PENDIENTE DOC": 45,
+                "EN ONBOARDING": 40,
+                "RECH. CLIENTE CANCELA": 90,
+                "RECH. SOBREENDEUDAMIENTO": 95,
+            }
             
-            # SUB-TAB: RESUMEN FINANCIERO
-            with ventas_tab2:
-                st.markdown("#### 💰 Resumen Financiero Total")
-                
-                # Calcular análisis financiero completo
-                analisis = calcular_analisis_financiero(df_cli)
-                
-                # KPIs principales financieros
-                col1, col2, col3, col4 = st.columns(4)
-                
-                with col1:
-                    st.metric(
-                        "💵 Total Propuesto",
-                        formatear_monto(analisis['total_propuesto']),
-                        help="Suma de todos los montos propuestos"
-                    )
-                
-                with col2:
-                    st.metric(
-                        "✅ Total Dispersado",
-                        formatear_monto(analisis['total_dispersado']),
-                        help="Suma de montos realmente dispersados"
-                    )
-                
-                with col3:
-                    tasa_conversion = (analisis['total_dispersado'] / analisis['total_propuesto'] * 100) if analisis['total_propuesto'] > 0 else 0
-                    st.metric(
-                        "📊 Tasa de Conversión",
-                        f"{tasa_conversion:.1f}%",
-                        help="Dispersado / Propuesto"
-                    )
-                
-                with col4:
-                    st.metric(
-                        "📈 Promedio por Cliente",
-                        formatear_monto(analisis['promedio_propuesto']),
-                        help="Monto promedio propuesto por cliente"
-                    )
-                
-                st.markdown("---")
-                
-                # Gráfico comparativo
-                st.markdown("**Comparación: Propuesto vs Dispersado**")
-                
-                comparacion_data = pd.DataFrame({
-                    'Categoría': ['Total Propuesto', 'Total Dispersado', 'Pendiente'],
-                    'Monto': [
-                        analisis['total_propuesto'],
-                        analisis['total_dispersado'],
-                        analisis['total_propuesto'] - analisis['total_dispersado']
-                    ]
-                })
-                
-                chart_comp = alt.Chart(comparacion_data).mark_bar().encode(
-                    x=alt.X('Monto:Q', axis=alt.Axis(title='Monto ($)', format='$,.0f')),
-                    y=alt.Y('Categoría:N', axis=alt.Axis(title='')),
-                    color=alt.Color('Categoría:N', 
-                                   scale=alt.Scale(domain=['Total Propuesto', 'Total Dispersado', 'Pendiente'],
-                                                 range=['#4DA8FF', '#4CAF50', '#FFC107'])),
-                    tooltip=[
-                        alt.Tooltip('Categoría:N'),
-                        alt.Tooltip('Monto:Q', title='Monto', format='$,.0f')
-                    ]
-                ).properties(height=200)
-                
-                st.altair_chart(chart_comp, width='stretch')
+            # Para otros estatus de rechazo, aplicar valores altos
+            for estatus in df_analisis['estatus'].unique():
+                if estatus and (estatus.startswith("RECH") or estatus.startswith("REC")):
+                    if estatus not in prob_conversion:
+                        prob_conversion[estatus] = 0.05
+                        factor_retorno[estatus] = 0.00
+                        riesgo_pct[estatus] = 95
             
-            # SUB-TAB: INGRESOS POR CANAL
-            with ventas_tab3:
-                st.markdown("#### 📊 Análisis de Ingresos por Canal")
+            # Aplicar modelo refinado
+            df_analisis["Probabilidad de Conversión"] = df_analisis["estatus"].map(prob_conversion).fillna(0.5)
+            df_analisis["Factor Retorno"] = df_analisis["estatus"].map(factor_retorno).fillna(0.5)
+            df_analisis["Riesgo (%)"] = df_analisis["estatus"].map(riesgo_pct).fillna(50)
+            
+            # Cálculos financieros
+            df_analisis["Monto Esperado"] = df_analisis["monto_analisis"] * df_analisis["Probabilidad de Conversión"]
+            df_analisis["Retorno Esperado"] = df_analisis["monto_analisis"] * df_analisis["Factor Retorno"]
+            df_analisis["Riesgo Estimado (%)"] = df_analisis["Riesgo (%)"]  # Para compatibilidad
+            
+            # === MÉTRICAS GLOBALES REFINADAS ===
+            total_cartera = df_analisis["monto_analisis"].sum()
+            total_monto_esperado = df_analisis["Monto Esperado"].sum()
+            total_retorno = df_analisis["Retorno Esperado"].sum()
+            prom_riesgo = df_analisis["Riesgo (%)"].mean()
+            prom_conversion = df_analisis["Probabilidad de Conversión"].mean() * 100
+            
+            # === DIAGNÓSTICO EJECUTIVO AUTOMATIZADO ===
+            st.markdown("##### 🧠 Diagnóstico Financiero")
+            
+            # Resumen ejecutivo
+            st.markdown(f"""
+            **📊 Resumen Ejecutivo:**
+            - Cartera total: **{formatear_monto(total_cartera)}**
+            - Conversión esperada: **{formatear_monto(total_monto_esperado)}** ({(total_monto_esperado/total_cartera*100):.1f}% de la cartera)
+            - Retorno esperado: **{formatear_monto(total_retorno)}**
+            - Riesgo promedio: **{prom_riesgo:.1f}%**
+            - Conversión media: **{prom_conversion:.1f}%**
+            """)
+            
+            st.markdown("---")
+            
+            # Análisis automatizado tipo analista
+            if prom_riesgo < 30 and prom_conversion > 70:
+                st.success("✅ **Cartera saludable.** Alta probabilidad de conversión y bajo nivel de riesgo. Se recomienda mantener políticas actuales de aprobación.")
+            elif prom_riesgo < 60 and prom_conversion > 40:
+                st.warning("⚠️ **Cartera moderada.** Algunos clientes requieren seguimiento. Enfocar esfuerzos en etapas de aceptación y documentación.")
+            else:
+                st.error("🚨 **Riesgo alto.** La mayoría de las solicitudes tienen baja conversión o alta cancelación. Revisar criterios de originación y documentación.")
+            
+            # Análisis específico de oportunidades (incluir todos los pendientes)
+            # Definir estatus que se consideran "pendientes" o en proceso
+            estatus_pendientes = df_analisis[~df_analisis['estatus'].str.contains('DISPERSADO|RECHAZADO', na=False, case=False)]
+            
+            if not estatus_pendientes.empty:
+                total_pendientes = len(estatus_pendientes)
+                pct_pendientes = (total_pendientes / len(df_analisis) * 100)
                 
-                # Análisis por fuente (cuántos ingresaron)
-                st.markdown("**📢 Ingresos por Fuente de Captación**")
+                # Obtener breakdown por estatus pendiente
+                breakdown_pendientes = estatus_pendientes.groupby('estatus').agg({
+                    'nombre': 'count',
+                    'monto_analisis': 'sum'
+                }).rename(columns={'nombre': 'cantidad'})
                 
-                fuente_analisis = df_cli.groupby("fuente").agg({
-                    "id": "count",
-                    "monto_propuesta": lambda x: x.apply(limpiar_monto_local).sum()
-                }).reset_index()
-                fuente_analisis.columns = ["Fuente", "Clientes Ingresados", "Monto Total"]
-                fuente_analisis = fuente_analisis[fuente_analisis["Clientes Ingresados"] > 0]
-                fuente_analisis["Monto Promedio"] = fuente_analisis["Monto Total"] / fuente_analisis["Clientes Ingresados"]
+                # Crear texto detallado con los estatus pendientes
+                detalle_estatus = []
+                for estatus, row in breakdown_pendientes.iterrows():
+                    detalle_estatus.append(f"{row['cantidad']} {estatus}")
                 
-                if not fuente_analisis.empty:
-                    col1, col2 = st.columns(2)
-                    
-                    with col1:
-                        # Gráfico de clientes por fuente
-                        chart_fuente_ing = alt.Chart(fuente_analisis).mark_bar().encode(
-                            x=alt.X("Clientes Ingresados:Q", axis=alt.Axis(title="Clientes")),
-                            y=alt.Y("Fuente:N", sort="-x"),
-                            color=alt.Color("Fuente:N", scale=alt.Scale(scheme="category20"), legend=None),
-                            tooltip=[
-                                alt.Tooltip("Fuente:N"),
-                                alt.Tooltip("Clientes Ingresados:Q", title="Clientes"),
-                                alt.Tooltip("Monto Total:Q", title="Monto Total", format="$,.0f")
-                            ]
-                        ).properties(height=200, title="Clientes Ingresados por Fuente")
-                        
-                        st.altair_chart(chart_fuente_ing, width='stretch')
-                    
-                    with col2:
-                        # Tabla resumen
-                        st.dataframe(
-                            fuente_analisis.assign(
-                                **{
-                                    "Monto Total": fuente_analisis["Monto Total"].apply(lambda x: formatear_monto(x)),
-                                    "Monto Promedio": fuente_analisis["Monto Promedio"].apply(lambda x: formatear_monto(x))
-                                }
-                            )[["Fuente", "Clientes Ingresados", "Monto Total", "Monto Promedio"]],
-                            width='stretch',
-                            hide_index=True
-                        )
+                detalle_texto = ", ".join(detalle_estatus[:3])  # Mostrar los primeros 3
+                if len(detalle_estatus) > 3:
+                    detalle_texto += f" y {len(detalle_estatus) - 3} más"
                 
-                st.markdown("---")
+                st.info(f"💡 **Oportunidad:** {total_pendientes} créditos pendientes ({pct_pendientes:.0f}% del total) representan {formatear_monto(estatus_pendientes['monto_analisis'].sum())} en oportunidades. Incluye: {detalle_texto}. Priorizar seguimiento puede mejorar conversión.")
+            
+            # === RESUMEN POR ESTATUS ===
+            col_tabla, col_grafico = st.columns([1, 1])
+            
+            with col_tabla:
+                st.markdown("##### 🔍 Distribución por Estatus")
+                resumen = df_analisis.groupby("estatus").agg({
+                    "monto_analisis": "sum",
+                    "Retorno Esperado": "sum",
+                    "Riesgo Estimado (%)": "mean",
+                    "nombre": "count"  # Contar clientes
+                }).rename(columns={"nombre": "Clientes"}).reset_index()
                 
-                # Análisis por asesor
-                st.markdown("**👥 Desempeño por Asesor**")
+                # Formatear para mostrar
+                resumen_display = resumen.copy()
+                resumen_display["Monto Total"] = resumen_display["monto_analisis"].apply(lambda x: f"${x:,.0f}")
+                resumen_display["Retorno Esperado"] = resumen_display["Retorno Esperado"].apply(lambda x: f"${x:,.0f}")
+                resumen_display["Riesgo (%)"] = resumen_display["Riesgo Estimado (%)"].apply(lambda x: f"{x:.1f}%")
                 
-                asesor_ventas = df_cli.groupby("asesor").agg({
-                    "id": "count",
-                    "monto_propuesta": lambda x: x.apply(limpiar_monto_local).sum()
-                }).reset_index()
-                asesor_ventas.columns = ["Asesor", "Clientes", "Ventas Totales"]
-                asesor_ventas = asesor_ventas[asesor_ventas["Clientes"] > 0].sort_values("Ventas Totales", ascending=False)
-                
-                if not asesor_ventas.empty:
-                    # Top 10 asesores
-                    top_asesores = asesor_ventas.head(10)
-                    
-                    chart_ases_ventas = alt.Chart(top_asesores).mark_bar().encode(
-                        x=alt.X("Ventas Totales:Q", axis=alt.Axis(title="Ventas ($)", format="$,.0f")),
-                        y=alt.Y("Asesor:N", sort="-x"),
-                        color=alt.value("#4DA8FF"),
-                        tooltip=[
-                            alt.Tooltip("Asesor:N"),
-                            alt.Tooltip("Clientes:Q"),
-                            alt.Tooltip("Ventas Totales:Q", title="Ventas", format="$,.0f")
-                        ]
-                    ).properties(height=300, title="Top 10 Asesores por Ventas")
-                    
-                    st.altair_chart(chart_ases_ventas, width='stretch')
+                st.dataframe(
+                    resumen_display[["estatus", "Clientes", "Monto Total", "Retorno Esperado", "Riesgo (%)"]],
+                    use_container_width=True,
+                    hide_index=True
+                )
+            
+            with col_grafico:
+                pass  # Columna vacía
+            
+            st.markdown("---")
+            st.caption("© CRM BEWORK ")
+
 # ===== Clientes (alta + edición) =====
 with tab_cli:
     # Cargar datos frescos para la pestaña de clientes
@@ -5625,24 +5575,25 @@ with tab_cli:
                                 df_new.to_excel(writer, index=False, sheet_name="Clientes")
                     except Exception:
                         pass
-                    # Configurar layout del sheet si es necesario
                     try:
-                        st.session_state["use_sheet_layout"] = True
-                        if st.session_state.get("sheet_human_headers"):
-                            st.session_state["sheet_columns_human"] = st.session_state.get("sheet_human_headers")
-                            st.session_state["sheet_internal_map"] = st.session_state.get("sheet_internal_map", {})
-                        else:
-                            st.session_state["sheet_columns"] = [c for c in SHEET_INTERNAL_COLUMNS if c in df_new.columns]
-                            st.session_state["sheet_header_map"] = dict(zip(SHEET_INTERNAL_COLUMNS, SHEET_HEADERS))
+                        _CLIENTES_CACHE = df_new.copy()
+                        import time
+                        _CLIENTES_CACHE_TIME = time.time()
+                        try:
+                            st.session_state["use_sheet_layout"] = True
+                            if st.session_state.get("sheet_human_headers"):
+                                st.session_state["sheet_columns_human"] = st.session_state.get("sheet_human_headers")
+                                st.session_state["sheet_internal_map"] = st.session_state.get("sheet_internal_map", {})
+                            else:
+                                st.session_state["sheet_columns"] = [c for c in SHEET_INTERNAL_COLUMNS if c in df_new.columns]
+                                st.session_state["sheet_header_map"] = dict(zip(SHEET_INTERNAL_COLUMNS, SHEET_HEADERS))
+                        except Exception:
+                            pass
                     except Exception:
                         pass
-                    # Actualizar el caché (ya están en scope global)
-                    _CLIENTES_CACHE = df_new.copy()
-                    import time
-                    _CLIENTES_CACHE_TIME = time.time()
                     st.success(f"Se recargaron {len(df_new)} registros desde Google Sheets y se actualizó el CSV local.")
                     df_cli = df_new
-                    do_rerun()
+                    st.experimental_rerun()
             except Exception as e:
                 st.error(f"Error recargando desde Google Sheets: {e}")
     
@@ -5772,9 +5723,7 @@ with tab_cli:
                 "estatus": st.column_config.SelectboxColumn("Estatus", options=ESTATUS_OPCIONES, required=True)
             }
 
-        # Limpiar columna sucursal solo si existe
-        if "sucursal" in df_clientes_mostrar.columns:
-            df_clientes_mostrar["sucursal"] = df_clientes_mostrar["sucursal"].where(df_clientes_mostrar["sucursal"].isin(SUCURSALES), "")
+        df_clientes_mostrar["sucursal"] = df_clientes_mostrar["sucursal"].where(df_clientes_mostrar["sucursal"].isin(SUCURSALES), "")
         # antes de mostrar el editor, ordenar df_clientes_mostrar por fechas asc
         df_clientes_mostrar = sort_df_by_dates(df_clientes_mostrar)  # apply ordering
         # FIX: data_editor no acepta ColumnDataKind.DATETIME si la columna está configurada como TextColumn.
@@ -5883,12 +5832,12 @@ with tab_cli:
             st.caption("Eliminar cliente (Siempre dar doble click para confirmar)")
             
             if can("delete_client"):
-                    cid_del = ""
                     if ids_quick:
                         # mostrar opciones con 'ID - Nombre' para permitir borrar por nombre visualmente
                         opts = [""] + [f"{cid} - {get_nombre_by_id(cid)}" if get_nombre_by_id(cid) else str(cid) for cid in ids_quick]
                         sel = st.selectbox("Cliente a eliminar (ID - Nombre)", opts)
                         # extraer id del texto seleccionado
+                        cid_del = ""
                         if sel:
                             if " - " in sel:
                                 cid_del = sel.split(" - ", 1)[0]
@@ -6161,7 +6110,7 @@ with tab_import:
             st.warning("El Excel está vacío o no se pudo leer.")
         else:
             with st.expander("Vista previa", expanded=True):
-                st.dataframe(sort_df_by_dates(df_imp_raw).head(10), width='stretch')
+                st.dataframe(sort_df_by_dates(df_imp_raw).head(10), use_container_width=True)
 
             st.markdown("#### Mapeo de columnas")
             df_cols = df_imp_raw.columns.tolist()
@@ -6327,7 +6276,7 @@ with tab_import:
                     save_estatus(ESTATUS_OPCIONES)
                     st.info(f"Se agregaron {len(added_global)} estatus: {', '.join(added_global)}")
             with st.expander("Previsualización mapeada", expanded=False):
-                st.dataframe(sort_df_by_dates(df_norm).head(10), width='stretch')
+                st.dataframe(sort_df_by_dates(df_norm).head(10), use_container_width=True)
 
             st.markdown("#### Modo de importación")
             modo = st.radio(
@@ -6534,7 +6483,7 @@ with tab_hist:
                         # OTROS: no filtrar por action; mostrar todo lo que no cae en las categorías anteriores
                         pass
 
-                st.dataframe(df_show.reset_index(drop=True), width='stretch', hide_index=True)
+                st.dataframe(df_show.reset_index(drop=True), use_container_width=True, hide_index=True)
 
                 try:
                     csv_bytes = df_show.to_csv(index=False, encoding="utf-8")
