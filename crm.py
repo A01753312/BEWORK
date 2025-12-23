@@ -5997,8 +5997,7 @@ with tab_cli:
 
                 # Producto seleccionado fuera del form para permitir actualizar dinámicamente el listado de estatus
                 producto_n = st.selectbox("Producto *", ["MEJORAVIT", "INBURSA", "MULTIVA"], index=( ["MEJORAVIT","INBURSA","MULTIVA"].index(cur.get("producto")) if cur.get("producto") in ["MEJORAVIT","INBURSA","MULTIVA"] else 0), key=f"edit_producto_{cid_quick}")
-                # Nuevo asesor toggle (igual que en alta)
-                st.checkbox("Nuevo asesor (marca para escribir nombre y apellido)", key=f"edit_new_asesor_toggle_{cid_quick}", help="Marca para ingresar manualmente el nombre y apellido del asesor")
+                # (Se eliminó opción de "Nuevo asesor" — siempre usamos la lista existente)
 
                 with st.form(f"form_edit_cliente_{cid_quick}", clear_on_submit=False):
                     st.markdown(f"**Editar cliente {cid_quick} — {cur.get('nombre','')}**")
@@ -6077,15 +6076,11 @@ with tab_cli:
                             base.at[cid_quick, "contrasena"] = contrasena_n.strip()
                             base.at[cid_quick, "tipo_tramite"] = tipo_tramite_n
                             base.at[cid_quick, "fuente"] = fuente_select
-                            # Resolver asesor: si se indicó nuevo asesor usarlo, si no usar selección previa
-                            if st.session_state.get(f"edit_new_asesor_toggle_{cid_quick}", False):
-                                asesor_val = st.session_state.get(f"edit_nuevo_asesor_{cid_quick}", "").strip()
-                            else:
-                                raw_ases = [a for a in df_cli["asesor"].fillna("").unique() if str(a).strip()]
-                                asesores_exist = sorted(list(dict.fromkeys([_norm_sin_asesor_label(a) for a in raw_ases])))
-                                asesores_choices = list(dict.fromkeys(["(Sin asesor)"] + asesores_exist))
-                                asesor_select_key = f"edit_ases_select_{cid_quick}"
-                                asesor_val = base.at[cid_quick, "asesor"] if base.at[cid_quick, "asesor"] else ""
+                            # Resolver asesor: usar la lista existente y normalizar el valor
+                            raw_ases = [a for a in df_cli["asesor"].fillna("").unique() if str(a).strip()]
+                            asesores_exist = sorted(list(dict.fromkeys([_norm_sin_asesor_label(a) for a in raw_ases])))
+                            asesores_choices = list(dict.fromkeys(["(Sin asesor)"] + asesores_exist))
+                            asesor_val = base.at[cid_quick, "asesor"] if base.at[cid_quick, "asesor"] else ""
                             base.at[cid_quick, "asesor"] = find_matching_asesor(asesor_val, base.reset_index())
 
                             # registrar diferencias en historial (solo campos incluidos en la edición anterior)
