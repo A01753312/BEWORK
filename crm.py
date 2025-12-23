@@ -4657,37 +4657,40 @@ with tab_dash:
                 help="Clientes rechazados por diversos motivos"
             )
         
-        # 💹 Top Estatus por Monto
-        st.markdown("##### 💹 Top Estatus por Monto")
-        
+        # 💹 Top Estatus — Total Vendido
+        st.markdown("##### 💹 Top Estatus — Total Vendido")
+
         # Calcular métricas financieras para el ranking
         analisis_financiero = calcular_analisis_financiero(df_cli)
-        
-        # Mostrar total de presupuesto general
+
+        # Mostrar total de presupuesto general (informativo)
         total_presupuesto = analisis_financiero['total_propuesto']
         st.markdown(f"**Total Presupuesto General: {formatear_monto(total_presupuesto)}**")
-        
+
+        # Indicar la fuente de los montos mostrados
+        st.caption("Fuente: columna 'monto_final' (total vendido) — cifras exactas mostradas sin abreviaturas")
+
         if not analisis_financiero['montos_por_estatus'].empty:
-            # Filtrar solo estatus con monto > 0
+            # Filtrar solo estatus con monto final vendido > 0
             estatus_con_monto = analisis_financiero['montos_por_estatus'][
-                analisis_financiero['montos_por_estatus'][('monto_propuesta_num', 'sum')] > 0
+                analisis_financiero['montos_por_estatus'][('monto_final_num', 'sum')] > 0
             ]
-            
-            # Obtener top estatus por monto propuesto
+
+            # Obtener top estatus por monto vendido (monto_final)
             top_estatus = estatus_con_monto.sort_values(
-                ('monto_propuesta_num', 'sum'), ascending=False
+                ('monto_final_num', 'sum'), ascending=False
             ).head(5)
-            
+
             col1, col2 = st.columns(2)
-            
+
             # Dividir en dos columnas para mostrar mejor con texto más pequeño
             for i, (estatus, data) in enumerate(top_estatus.iterrows()):
-                monto_total = data[('monto_propuesta_num', 'sum')]
-                cantidad = data[('monto_propuesta_num', 'count')]
-                promedio = data[('monto_propuesta_num', 'mean')]
-                
+                monto_total = data.get(('monto_final_num', 'sum'), 0) or 0
+                cantidad = int(data.get(('monto_propuesta_num', 'count'), 0) or 0)
+                promedio_vendido = data.get(('monto_final_num', 'mean'), 0) or 0
+
                 with col1 if i % 2 == 0 else col2:
-                    # Usar markdown para texto más pequeño
+                    # Mostrar monto vendido como cifra exacta con separadores de miles
                     st.markdown(f"""
                     <div style="
                         border: 1px solid #e1e5e9;
@@ -4700,10 +4703,10 @@ with tab_dash:
                             {estatus}
                         </div>
                         <div style="font-size: 18px; font-weight: bold; color: #212529; margin: 4px 0;">
-                            {formatear_monto(monto_total)}
+                            ${monto_total:,.0f}
                         </div>
                         <div style="font-size: 11px; color: #6c757d;">
-                            {int(cantidad)} clientes • Promedio: {formatear_monto(promedio)}
+                            {cantidad} clientes • Promedio vendido: ${promedio_vendido:,.0f}
                         </div>
                     </div>
                     """, unsafe_allow_html=True)
