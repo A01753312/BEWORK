@@ -3459,15 +3459,34 @@ def guardar_clientes_gsheet_append(df_nuevo: pd.DataFrame):
                 _gs_debug(f"Exception during append: {e}")
                 pass
 
-        # 2) Actualizados: disabled by default to avoid accidental clearing of sheet rows.
-        # To enable updates later, set DO_UPDATES = True and re-evaluate carefully.
-        DO_UPDATES = False
+        # 2) Actualizados: enable updates to sync existing rows by ID.
+        DO_UPDATES = True
         comunes_ids = [i for i in idx_nuevo.keys() if i in idx_actual]
         if comunes_ids:
-            _gs_debug(f"Detected {len(comunes_ids)} existing ids; updates are currently disabled (DO_UPDATES={DO_UPDATES}). Skipping updates to avoid data loss.")
+            _gs_debug(f"Detected {len(comunes_ids)} existing ids; DO_UPDATES={DO_UPDATES}")
             if DO_UPDATES:
-                # The update logic was intentionally removed temporarily.
-                pass
+                try:
+                    last_col = col_idx_to_letter(len(sheet_columns))
+                    for _id in comunes_ids:
+                        try:
+                            i_new = idx_nuevo[_id]
+                            internal_row = df_nuevo_idx.loc[i_new]
+                            row_values = build_full_row_from_internal(internal_row)
+                            # sheet rows are 1-based with header at row 1; idx_actual values are 0-based
+                            row_num = idx_actual.get(_id, None)
+                            if row_num is None:
+                                continue
+                            sheet_row = row_num + 2
+                            _gs_debug(f"Updating ID {_id} at sheet row {sheet_row}")
+                            # Update the full row range in one call
+                            try:
+                                ws.update(f"A{sheet_row}:{last_col}{sheet_row}", [row_values], value_input_option="RAW")
+                            except Exception as e:
+                                _gs_debug(f"Exception updating ID {_id}: {e}")
+                        except Exception as e:
+                            _gs_debug(f"Exception preparing update for ID {_id}: {e}")
+                except Exception as e:
+                    _gs_debug(f"Exception during update loop: {e}")
                     
     except Exception:
         pass
