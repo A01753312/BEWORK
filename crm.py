@@ -42,6 +42,8 @@ from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseUpload
 import json
 from google.oauth2.credentials import Credentials as GoogleUserCredentials
+from google.auth.transport.requests import Request
+
 CLIENT_ID = st.secrets["GOOGLE_CLIENT_ID"]
 CLIENT_SECRET = st.secrets["GOOGLE_CLIENT_SECRET"]
 REDIRECT_URI = st.secrets["REDIRECT_URI"]
@@ -82,6 +84,49 @@ except Exception:
     pass
 
 # Mostrar botón de conexión si aún no se ha autenticado
+# Helper: verificar si hay credenciales válidas de Drive (y refrescarlas si es posible)
+def drive_connected() -> bool:
+    """Verifica si las credenciales de Drive están operativas.
+    Intenta refrescar si es necesario y realiza una llamada mínima a la API para validar.
+    Registra resultados en `data/gs_debug.log` para diagnóstico.
+    """
+    creds = st.session_state.get('drive_creds')
+    def _log(msg: str):
+        try:
+            p = DATA_DIR / "gs_debug.log"
+            p.parent.mkdir(parents=True, exist_ok=True)
+            with open(p, "a", encoding="utf-8") as fh:
+                fh.write(f"{datetime.now().isoformat()} - {msg}\n")
+        except Exception:
+            pass
+
+    if not creds:
+        _log("drive_connected: no creds in session_state")
+        return False
+
+    # Intentar refrescar si el objeto lo requiere y tiene refresh_token
+    try:
+        if getattr(creds, 'expired', False) and getattr(creds, 'refresh_token', None):
+            try:
+                creds.refresh(Request())
+                st.session_state['drive_creds'] = creds
+                _log("drive_connected: refreshed credentials successfully")
+            except Exception as e:
+                _log(f"drive_connected: refresh failed: {repr(e)}")
+                return False
+    except Exception as e:
+        _log(f"drive_connected: checking expiry failed: {repr(e)}")
+
+    # Probar una llamada mínima a Drive
+    try:
+        svc = build("drive", "v3", credentials=st.session_state['drive_creds'])
+        svc.files().list(pageSize=1, fields="files(id)").execute()
+        _log("drive_connected: drive API call OK")
+        return True
+    except Exception as e:
+        _log(f"drive_connected: drive API call failed: {repr(e)}")
+        return False
+
 if not st.session_state.drive_creds:
     # Construir URL de autorización manualmente con scopes correctos
     scope_string = "%20".join([scope.replace("https://www.googleapis.com/auth/", "") for scope in SCOPES])
@@ -145,7 +190,13 @@ if not st.session_state.drive_creds:
                             except Exception:
                                 pass
                         st.success("✅ Código procesado y credenciales guardadas. Recarga la página si es necesario.")
-                        st.experimental_rerun()
+                        try:
+                            st.rerun()
+                        except Exception:
+                            try:
+                                st.experimental_rerun()
+                            except Exception:
+                                pass
                     except Exception as e:
                         st.error(f"Error al procesar el código: {e}")
                         try:
@@ -159,16 +210,30 @@ if not st.session_state.drive_creds:
 else:
     st.sidebar.markdown("---")
     st.sidebar.markdown("### 📂 Google Drive")
-    # Mostrar estado real de conexión
-    try:
-        conn = drive_connected()
-    except Exception:
-        conn = False
-    if conn:
-        st.sidebar.success("✅ Conectado a Google Drive")
+    # Mostrar estado basado en credenciales presentes (más robusto)
+    has_creds = bool(st.session_state.get('drive_creds'))
+    if has_creds:
+        st.sidebar.success("✅ Conectado a Google Drive (credenciales presentes)")
         st.sidebar.caption("Carpeta objetivo: CRM BEWORKK")
+        # Opción manual para probar la conexión real a la API sin bloquear la UI
+        if st.sidebar.button("🔎 Probar conexión", key="btn_test_drive"):
+            ok = False
+            try:
+                ok = drive_connected()
+            except Exception as e:
+                try:
+                    p = DATA_DIR / "gs_debug.log"
+                    with open(p, "a", encoding="utf-8") as fh:
+                        fh.write(f"{datetime.now().isoformat()} - manual_test_error: {repr(e)}\n")
+                except Exception:
+                    pass
+                ok = False
+            if ok:
+                st.sidebar.success("Prueba de conexión: OK")
+            else:
+                st.sidebar.error("Prueba de conexión: Falló (ver data/gs_debug.log)")
     else:
-        st.sidebar.error("⚠️ Conexión con Google Drive inválida o caducada")
+        st.sidebar.error("⚠️ No hay credenciales de Drive. Conecta para activar uploads")
     
     # Botón para desconectar Google Drive
     if st.sidebar.button("🔌 Desconectar Drive", help="Cerrar sesión de Google Drive"):
@@ -265,51 +330,6 @@ if "error" in query_params:
     error = query_params["error"]
     # Quitar mensaje molesto: st.sidebar.error(f"❌ Error de autorización: {error}")
     st.query_params.clear()
-
-
-# Helper: verificar si hay credenciales válidas de Drive (y refrescarlas si es posible)
-def drive_connected() -> bool:
-    """Verifica si las credenciales de Drive están operativas.
-    Intenta refrescar si es necesario y realiza una llamada mínima a la API para validar.
-    Registra resultados en `data/gs_debug.log` para diagnóstico.
-    """
-    creds = st.session_state.get('drive_creds')
-    def _log(msg: str):
-        try:
-            p = DATA_DIR / "gs_debug.log"
-            p.parent.mkdir(parents=True, exist_ok=True)
-            with open(p, "a", encoding="utf-8") as fh:
-                fh.write(f"{datetime.now().isoformat()} - {msg}\n")
-        except Exception:
-            pass
-
-    if not creds:
-        _log("drive_connected: no creds in session_state")
-        return False
-
-    # Intentar refrescar si el objeto lo requiere y tiene refresh_token
-    try:
-        if getattr(creds, 'expired', False) and getattr(creds, 'refresh_token', None):
-            try:
-                creds.refresh(Request())
-                st.session_state['drive_creds'] = creds
-                _log("drive_connected: refreshed credentials successfully")
-            except Exception as e:
-                _log(f"drive_connected: refresh failed: {repr(e)}")
-                return False
-    except Exception as e:
-        _log(f"drive_connected: checking expiry failed: {repr(e)}")
-
-    # Probar una llamada mínima a Drive
-    try:
-        svc = build("drive", "v3", credentials=st.session_state['drive_creds'])
-        svc.files().list(pageSize=1, fields="files(id)").execute()
-        _log("drive_connected: drive API call OK")
-        return True
-    except Exception as e:
-        _log(f"drive_connected: drive API call failed: {repr(e)}")
-        return False
-
 # CSS personalizado para look profesional con tema claro BEWORK
 st.markdown("""
 <style>
@@ -716,7 +736,6 @@ from gspread_dataframe import get_as_dataframe, set_with_dataframe
 from google.oauth2.service_account import Credentials
 import shutil
 import altair as alt
-from google.auth.transport.requests import Request
 
 # Debug info removed by user request (sidebar debug block intentionally deleted)
 
