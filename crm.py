@@ -1446,8 +1446,8 @@ DOC_CATEGORIAS = {
 }
 
 # === CONFIGURACIÓN GOOGLE SHEETS ===
-# Desactivar integración con Google Sheets: gestión de catálogos deshabilitada
-USE_GSHEETS = False   # Gestión de catálogos desactivada
+# Activar integración con Google Sheets
+USE_GSHEETS = True   # Gestión de catálogos habilitada
 GSHEET_ID      = "1wD9D3OsSB4HXel1LIGo0h6xNdcjZEF-iHue-Hl4z1pg"
 GSHEET_TAB     = "clientes"    # tu pestaña principal
 GSHEET_HISTTAB = "historial"   # tu pestaña de historial
