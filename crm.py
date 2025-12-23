@@ -140,73 +140,8 @@ if not st.session_state.drive_creds:
     st.sidebar.markdown("---")
     st.sidebar.markdown("### 📂 Conexión a Google Drive")
     st.sidebar.markdown(f"[🔐 Conectar con Google Drive]({auth_url})")
-    # show recent debug lines if present
-    try:
-        logp = DATA_DIR / "gs_debug.log"
-        if logp.exists():
-            tail = "".join(logp.read_text(encoding="utf-8").splitlines()[-5:])
-            st.sidebar.caption("Últimos logs:")
-            st.sidebar.code(tail)
-    except Exception:
-        pass
-    # Fallback manual: permitir pegar el código de autorización si el redirect no funciona
-    try:
-        with st.sidebar.expander("¿Problemas con el redirect? Pega aquí el código de autorización"):
-            manual_code = st.text_input("Código de autorización (solo si falló el redirect)", key="manual_drive_code")
-            if manual_code:
-                if st.button("Procesar código manual", key="process_manual_drive_code"):
-                    try:
-                        client_config = {
-                            "web": {
-                                "client_id": CLIENT_ID,
-                                "client_secret": CLIENT_SECRET,
-                                "redirect_uris": [REDIRECT_URI],
-                                "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-                                "token_uri": "https://oauth2.googleapis.com/token",
-                                "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs"
-                            }
-                        }
-                        flow = Flow.from_client_config(client_config, scopes=SCOPES)
-                        flow.redirect_uri = REDIRECT_URI
-                        flow.fetch_token(code=manual_code)
-                        st.session_state.drive_creds = flow.credentials
-                        st.session_state.processed_auth_code = manual_code
-                        # persistir credenciales
-                        try:
-                            DATA_DIR.mkdir(parents=True, exist_ok=True)
-                            info = json.loads(flow.credentials.to_json())
-                            (DATA_DIR / "drive_creds.json").write_text(json.dumps(info, ensure_ascii=False, indent=2), encoding="utf-8")
-                            try:
-                                p = DATA_DIR / "gs_debug.log"
-                                with open(p, "a", encoding="utf-8") as fh:
-                                    fh.write(f"{datetime.now().isoformat()} - manual_oauth: fetched token and saved creds to disk\n")
-                            except Exception:
-                                pass
-                        except Exception as e:
-                            try:
-                                p = DATA_DIR / "gs_debug.log"
-                                with open(p, "a", encoding="utf-8") as fh:
-                                    fh.write(f"{datetime.now().isoformat()} - manual_oauth_save_fail: {repr(e)}\n")
-                            except Exception:
-                                pass
-                        st.success("✅ Código procesado y credenciales guardadas. Recarga la página si es necesario.")
-                        try:
-                            st.rerun()
-                        except Exception:
-                            try:
-                                st.experimental_rerun()
-                            except Exception:
-                                pass
-                    except Exception as e:
-                        st.error(f"Error al procesar el código: {e}")
-                        try:
-                            p = DATA_DIR / "gs_debug.log"
-                            with open(p, "a", encoding="utf-8") as fh:
-                                fh.write(f"{datetime.now().isoformat()} - manual_oauth_error: {repr(e)}\n")
-                        except Exception:
-                            pass
-    except Exception:
-        pass
+    # (Se eliminó el expander de pegado manual del código de autorización
+    #  y la visualización de últimos logs en el sidebar por simplificación.)
 else:
     st.sidebar.markdown("---")
     st.sidebar.markdown("### 📂 Google Drive")
@@ -4258,7 +4193,7 @@ st.sidebar.markdown(f"**Usuario:** {u.get('user') or u.get('email')} — _{u['ro
 if st.sidebar.button("Cerrar sesión"):
     st.session_state["auth_user"] = None
     # Limpiar filtros y campos de login/alta para evitar que queden visibles
-    for k in ("f_suc","f_est","f_ases","ases_q","suc_q","est_q",
+    for k in ("f_suc","f_ases","ases_q","suc_q","est_q",
               "login_user","login_pw",
               "new_user_user","new_user_pw1","new_user_pw2",
               "setup_user","setup_pw1","setup_pw2"):
@@ -4367,46 +4302,8 @@ if is_admin():
                     else:
                         st.write("")
 
-    # -- Sincronización de Catálogos con Google Sheets --
-    st.sidebar.markdown("---")
-    with st.sidebar.expander("☁️ Sincronización de Catálogos", expanded=False):
-        st.caption("Sincronizar catálogos con Google Sheets")
-        
-        col_sync1, col_sync2 = st.columns(2)
-        
-        with col_sync1:
-            if st.button("📤 Subir Todo", key="sync_all_to_gsheet", help="Subir todos los catálogos a Google Sheets"):
-                with st.spinner("Sincronizando catálogos..."):
-                    sync_sucursales_to_gsheet()
-                    sync_estatus_to_gsheet()
-                    sync_asesores_to_gsheet()
-                st.toast("✅ Catálogos sincronizados a Google Sheets", icon="✅")
-                
-        with col_sync2:
-            if st.button("📥 Descargar Todo", key="sync_all_from_gsheet", help="Descargar todos los catálogos desde Google Sheets"):
-                with st.spinner("Cargando catálogos..."):
-                    load_catalogs_from_gsheet()
-                st.toast("✅ Catálogos actualizados desde Google Sheets", icon="✅")
-                st.rerun()
-        
-        # Sincronización individual
-        st.markdown("**Sincronización individual:**")
-        sync_cols = st.columns(4)
-        
-        with sync_cols[0]:
-            if st.button("🏢", key="sync_suc", help="Sincronizar Sucursales"):
-                sync_sucursales_to_gsheet()
-                st.toast("✅ Sucursales sincronizadas")
-                
-        with sync_cols[1]:
-            if st.button("👥", key="sync_ases", help="Sincronizar Asesores"):
-                sync_asesores_to_gsheet()
-                st.toast("✅ Asesores sincronizados")
-                
-        with sync_cols[2]:
-            if st.button("📊", key="sync_est", help="Sincronizar Estatus"):
-                sync_estatus_to_gsheet()
-                st.toast("✅ Estatus sincronizados")
+    # (Se eliminaron las opciones de sincronización/gestión de catálogos
+    #  en el sidebar conforme a la petición.)
                 
         # El soporte de 2° Estatus fue removido; no mostrar botón
 
@@ -4590,7 +4487,7 @@ FUENTE_ALL = sorted(list(dict.fromkeys([ (str(x).strip() if str(x).strip() else 
 # Controles “tipo selectbox” pero multi
 f_suc  = selectbox_multi("Sucursales", SUC_ALL,  "f_suc")
 f_ases = selectbox_multi("Asesores",   ASES_ALL, "f_ases")
-f_est  = selectbox_multi("Estatus",    EST_ALL,  "f_est")
+# (Filtro de 'Estatus' eliminado por solicitud)
 # NEW: añadir filtro de Fuente en el sidebar
 f_fuente = selectbox_multi("Fuente", FUENTE_ALL, "f_fuente")
 
@@ -4608,13 +4505,10 @@ def _reset_filters():
     try:
         st.session_state["f_suc"] = SUC_ALL.copy()
         st.session_state["f_ases"] = ASES_ALL.copy()
-        st.session_state["f_est"] = EST_ALL.copy()
         st.session_state["f_suc_all"] = True
         st.session_state["f_ases_all"] = True
-        st.session_state["f_est_all"] = True
         st.session_state["f_suc_ms"] = SUC_ALL.copy()
         st.session_state["f_ases_ms"] = ASES_ALL.copy()
-        st.session_state["f_est_ms"] = EST_ALL.copy()
         # NEW: reset para fuente
         st.session_state.setdefault("f_fuente", FUENTE_ALL.copy())
         st.session_state["f_fuente_all"] = True
@@ -4642,27 +4536,7 @@ def _force_refresh():
 
 st.sidebar.button("🔁", key="btn_reset_filters", on_click=_reset_filters)
 
-# Botón actualizar mejorado con feedback visual
-col_refresh1, col_refresh2 = st.sidebar.columns([3, 1])
-with col_refresh1:
-    # Calcular tiempo desde última actualización
-    import time
-    cache_age = int(time.time() - _CLIENTES_CACHE_TIME) if _CLIENTES_CACHE_TIME > 0 else 0
-    if cache_age < 60:
-        st.sidebar.caption(f"Última actualización: hace {cache_age}s")
-    else:
-        st.sidebar.caption(f"Última actualización: hace {cache_age//60}m")
-with col_refresh2:
-    if st.sidebar.button("🔄", key="btn_force_refresh", help="Recargar todo desde Google Sheets"):
-        with st.spinner("Recargando datos..."):
-            _force_refresh()
-        st.toast("✅ Datos actualizados", icon="✅")
-        st.rerun()
-
-# Verificar si se solicitó actualización desde callback
-if st.session_state.get("_force_refresh_requested", False):
-    st.session_state["_force_refresh_requested"] = False
-    st.rerun()
+# (Se eliminaron el contador de "Última actualización" y el botón de refresh del sidebar.)
 
 # Aplicar filtros: si no hay selección o está vacía, NO filtrar (mostrar todo)
 try:
@@ -4691,11 +4565,8 @@ try:
         current_asesor_normalized = current_asesor_for_filter.apply(_norm_sin_asesor_label)
         asesor_mask = current_asesor_normalized.isin(f_ases)
 
-    # Estatus: si está vacío o tiene todos, no filtrar
-    if not f_est or len(f_est) == 0 or set(f_est) == set(EST_ALL):
-        est_mask = pd.Series(True, index=df_cli.index)
-    else:
-        est_mask = df_cli["estatus"].isin(f_est)
+    # Estatus: filtro eliminado — no filtrar por estatus aquí
+    est_mask = pd.Series(True, index=df_cli.index)
 
     # Fuente: si está vacío o tiene todos, no filtrar
     try:
@@ -5278,10 +5149,8 @@ with tab_dash:
                     else:
                         suc_mask_dash = sucursal_for_filter.isin(f_suc)
 
-                    if not f_est or len(f_est) == 0 or set(f_est) == set(EST_ALL):
-                        est_mask_dash = pd.Series(True, index=df_cli.index)
-                    else:
-                        est_mask_dash = df_cli["estatus"].isin(f_est)
+                    # Filtro de estatus eliminado en dashboard — incluir todos
+                    est_mask_dash = pd.Series(True, index=df_cli.index)
 
                     if not f_fuente or len(f_fuente) == 0 or set(f_fuente) == set(FUENTE_ALL):
                         fuente_mask_dash = pd.Series(True, index=df_cli.index)
