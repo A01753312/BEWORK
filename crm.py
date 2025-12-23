@@ -6048,8 +6048,6 @@ with tab_cli:
 
                     obs_n = st.text_area("Observaciones", value=cur.get("observaciones", ""), key=f"edit_obs_{cid_quick}")
 
-                    obs_n = st.text_area("Observaciones", value=cur.get("observaciones", ""), key=f"edit_obs_{cid_quick}")
-
                     # Guardar cambios
                     if st.form_submit_button("Guardar cambios cliente"):
                         # construir nuevo registro
