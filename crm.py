@@ -5955,8 +5955,8 @@ with tab_cli:
             key="editor_clientes"
         )
 
-        st.markdown("### Cambio de estatus")
-        # asegurar ids_quick esté siempre definido para evitar NameError si df_clientes_mostrar no tiene 'id' o no es DataFrame
+        st.markdown("### Editar cliente (cambio de información)")
+        # asegurar ids_quick esté siempre definido
         try:
             ids_quick = (df_clientes_mostrar["id"].tolist() if (isinstance(df_clientes_mostrar, pd.DataFrame) and "id" in df_clientes_mostrar.columns) else [])
             ids_quick = [x for x in ids_quick if str(x).strip()]
@@ -5966,26 +5966,93 @@ with tab_cli:
                 pass
         except Exception:
             ids_quick = []
+
         if ids_quick:
-            col_q1, col_q2, col_q3, col_q4 = st.columns([2,2,2,3])
-            with col_q1:
-                cid_quick = st.selectbox("Cliente", ids_quick, format_func=lambda x: f"{x} - {get_nombre_by_id(x)}")
-                nombre_q = get_nombre_by_id(cid_quick)
-                estatus_actual = get_field_by_id(cid_quick, "estatus")
-            with col_q2:
-                nuevo_estatus = st.selectbox("Nuevo estatus", ESTATUS_OPCIONES, index=ESTATUS_OPCIONES.index(estatus_actual) if estatus_actual in ESTATUS_OPCIONES else 0)
-            with col_q3:
-                obs_q = st.text_input("Observaciones (opcional)")
-                if st.button("Actualizar estatus"):
-                    base = df_cli.set_index("id")
-                    base.at[cid_quick, "estatus"] = nuevo_estatus
-                    df_cli = base.reset_index()
-                    guardar_clientes(df_cli)
-                    # registrar en historial quién hizo el cambio (modificar)
-                    actor = (current_user() or {}).get("user") or (current_user() or {}).get("email")
-                    append_historial(cid_quick, nombre_q, estatus_actual, nuevo_estatus, obs_q, action="ESTATUS MODIFICADO", actor=actor)
-                    st.success(f"Estatus actualizado para {cid_quick} ✅")
-                    do_rerun()
+            cid_quick = st.selectbox("Selecciona cliente a editar", [""] + ids_quick, format_func=lambda x: "—" if x == "" else f"{x} - {get_nombre_by_id(x)}", key="edit_select_cid")
+            if cid_quick:
+                # cargar datos actuales
+                try:
+                    cur = df_cli[df_cli["id"] == cid_quick].iloc[0].to_dict()
+                except Exception:
+                    cur = {}
+
+                with st.form(f"form_edit_cliente_{cid_quick}", clear_on_submit=False):
+                    st.markdown(f"**Editar cliente {cid_quick} — {cur.get('nombre','')}**")
+                    c1, c2, c3 = st.columns(3)
+                    with c1:
+                        st.text_input("ID (no editable)", value=cid_quick, key=f"edit_id_{cid_quick}", disabled=True)
+                        nombre_n = st.text_input("Nombre *", value=cur.get("nombre", ""), key=f"edit_nombre_{cid_quick}")
+                        sucursal_n = st.selectbox("Sucursal *", SUCURSALES, index=SUCURSALES.index(cur.get("sucursal")) if cur.get("sucursal") in SUCURSALES else 0, key=f"edit_sucursal_{cid_quick}")
+                        analista_n = st.text_input("Analista", value=cur.get("analista", ""), key=f"edit_analista_{cid_quick}")
+                    with c2:
+                        try:
+                            fecha_ing_val = parse_dates_flexible(pd.Series([cur.get("fecha_ingreso", "")]))[0].date() if cur.get("fecha_ingreso") else date.today()
+                        except Exception:
+                            fecha_ing_val = date.today()
+                        fecha_ingreso_n = st.date_input("Fecha ingreso", value=fecha_ing_val, key=f"edit_fecha_ing_{cid_quick}")
+                        try:
+                            fecha_disp_val = parse_dates_flexible(pd.Series([cur.get("fecha_dispersion", "")]))[0].date() if cur.get("fecha_dispersion") else date.today()
+                        except Exception:
+                            fecha_disp_val = date.today()
+                        fecha_dispersion_n = st.date_input("Fecha dispersión", value=fecha_disp_val, key=f"edit_fecha_disp_{cid_quick}")
+                        estatus_n = st.selectbox("Estatus", ESTATUS_OPCIONES, index=ESTATUS_OPCIONES.index(cur.get("estatus")) if cur.get("estatus") in ESTATUS_OPCIONES else 0, key=f"edit_estatus_{cid_quick}")
+                        segundo_estatus_n = st.selectbox("Segundo estatus", SEGUNDO_ESTATUS_OPCIONES, index=SEGUNDO_ESTATUS_OPCIONES.index(cur.get("segundo_estatus")) if cur.get("segundo_estatus") in SEGUNDO_ESTATUS_OPCIONES else 0, key=f"edit_seg_{cid_quick}")
+                    with c3:
+                        monto_prop_n = st.text_input("Monto propuesta", value=cur.get("monto_propuesta", ""), key=f"edit_monto_prop_{cid_quick}")
+                        monto_final_n = st.text_input("Monto final", value=cur.get("monto_final", ""), key=f"edit_monto_final_{cid_quick}")
+                        score_n = st.text_input("Score", value=cur.get("score", ""), key=f"edit_score_{cid_quick}")
+                        telefono_n = st.text_input("Teléfono", value=cur.get("telefono", ""), key=f"edit_tel_{cid_quick}")
+                        correo_n = st.text_input("Correo", value=cur.get("correo", ""), key=f"edit_correo_{cid_quick}")
+                        fuente_n = st.text_input("Fuente", value=cur.get("fuente", ""), key=f"edit_fuente_{cid_quick}")
+
+                    obs_n = st.text_area("Observaciones", value=cur.get("observaciones", ""), key=f"edit_obs_{cid_quick}")
+
+                    # Guardar cambios
+                    if st.form_submit_button("Guardar cambios cliente"):
+                        # construir nuevo registro
+                        base = df_cli.set_index("id")
+                        if cid_quick not in base.index:
+                            st.error("Cliente no encontrado en la base")
+                        else:
+                            base.at[cid_quick, "nombre"] = nombre_n.strip()
+                            base.at[cid_quick, "sucursal"] = sucursal_n
+                            base.at[cid_quick, "analista"] = analista_n.strip()
+                            base.at[cid_quick, "fecha_ingreso"] = str(fecha_ingreso_n)
+                            base.at[cid_quick, "fecha_dispersion"] = str(fecha_dispersion_n)
+                            base.at[cid_quick, "estatus"] = estatus_n
+                            base.at[cid_quick, "segundo_estatus"] = segundo_estatus_n
+                            base.at[cid_quick, "monto_propuesta"] = str(monto_prop_n).strip()
+                            base.at[cid_quick, "monto_final"] = str(monto_final_n).strip()
+                            base.at[cid_quick, "score"] = str(score_n).strip()
+                            base.at[cid_quick, "telefono"] = telefono_n.strip()
+                            base.at[cid_quick, "correo"] = correo_n.strip()
+                            base.at[cid_quick, "fuente"] = fuente_n.strip()
+                            base.at[cid_quick, "observaciones"] = obs_n.strip()
+
+                            base.at[cid_quick, "asesor"] = find_matching_asesor(base.at[cid_quick, "asesor"], base.reset_index())
+
+                            # comparar y registrar cambios en historial
+                            try:
+                                actor = (current_user() or {}).get("user") or (current_user() or {}).get("email")
+                                old_row = df_cli[df_cli["id"] == cid_quick].iloc[0]
+                                diffs = []
+                                for c in COLUMNS:
+                                    if c == "id":
+                                        continue
+                                    oldv = str(old_row.get(c, ""))
+                                    newv = str(base.at[cid_quick, c])
+                                    if oldv != newv:
+                                        diffs.append((c, oldv, newv))
+                                if diffs:
+                                    detalles = ", ".join([f"{c}: '{o}' → '{n}'" for c, o, n in diffs])
+                                    append_historial(cid_quick, base.at[cid_quick, "nombre"], old_row.get("estatus", ""), base.at[cid_quick, "estatus"], old_row.get("segundo_estatus", ""), base.at[cid_quick, "segundo_estatus"], detalles, action="CLIENTE MODIFICADO", actor=actor)
+                            except Exception:
+                                pass
+
+                            df_cli = base.reset_index()
+                            guardar_clientes(df_cli)
+                            st.success(f"Cliente {cid_quick} actualizado ✅")
+                            do_rerun()
 
         col_save, col_del = st.columns([1,1])
         with col_save:
