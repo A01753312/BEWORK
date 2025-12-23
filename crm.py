@@ -4597,9 +4597,24 @@ with tab_dash:
                 help="Descargar presentación completa con gráficas"
             )
         
-        # Preparar datos para KPIs
-        total_clientes = len(df_cli)
-        estatus_counts = df_cli["estatus"].fillna("").value_counts()
+        # Filtro por producto para el dashboard
+        productos_disponibles = ["Todos"] + sorted(list({str(p).upper() for p in df_cli.get("producto", df_cli.get("Producto", pd.Series([]))).fillna("") if str(p).strip()}))
+        producto_sel = st.selectbox("Filtrar dashboard por Producto", productos_disponibles, index=0, key="dashboard_producto_filter")
+
+        # Preparar datos para KPIs según filtro de producto
+        df_dash = df_cli.copy()
+        if producto_sel and producto_sel != "Todos":
+            # intentar filtrar por columna `producto` (case-insensitive)
+            if "producto" in df_dash.columns:
+                df_dash = df_dash[df_dash["producto"].fillna("").str.upper() == producto_sel]
+            elif "Producto" in df_dash.columns:
+                df_dash = df_dash[df_dash["Producto"].fillna("").str.upper() == producto_sel]
+            else:
+                # no hay columna productiva, dejar df_dash sin filtrar pero avisar
+                st.info("No se encontró columna `producto` para filtrar; mostrando todos los productos.")
+
+        total_clientes = len(df_dash)
+        estatus_counts = df_dash["estatus"].fillna("").value_counts()
 
         # Calcular KPIs principales con lógica corregida
         dispersados = estatus_counts.get("DISPERSADO", 0)
@@ -4611,7 +4626,7 @@ with tab_dash:
         ])
 
         # === NUEVO: calcular propuestas (clientes con monto de propuesta) ===
-        analisis_tmp = calcular_analisis_financiero(df_cli)
+        analisis_tmp = calcular_analisis_financiero(df_dash)
         total_propuestas = int(analisis_tmp.get('clientes_con_monto', 0))
         dispersados_con_monto = int(analisis_tmp.get('dispersados_con_monto', 0))
 
@@ -4661,7 +4676,7 @@ with tab_dash:
         st.markdown("##### 💹 Top Estatus — Total Vendido")
 
         # Calcular métricas financieras para el ranking
-        analisis_financiero = calcular_analisis_financiero(df_cli)
+        analisis_financiero = calcular_analisis_financiero(df_dash)
 
         # Mostrar total de presupuesto general (informativo)
         total_presupuesto = analisis_financiero['total_propuesto']
