@@ -4355,6 +4355,17 @@ f_ases = selectbox_multi("Asesores",   ASES_ALL, "f_ases")
 # NEW: añadir filtro de Fuente en el sidebar
 f_fuente = selectbox_multi("Fuente", FUENTE_ALL, "f_fuente")
 
+# NEW: filtro por Producto en el sidebar (single select con 'Todos')
+try:
+    producto_for_filter = df_cli.get("producto", df_cli.get("Producto", pd.Series(""))).fillna("")
+    PRODUCTOS_ALL = ["Todos"] + sorted(list(dict.fromkeys([str(x).strip().upper() for x in producto_for_filter.unique() if str(x).strip()])))
+    # Guardar en session para persistencia y compatibilidad
+    st.session_state.setdefault("f_producto", "Todos")
+    f_producto = st.sidebar.selectbox("Producto", PRODUCTOS_ALL, index=PRODUCTOS_ALL.index(st.session_state.get("f_producto", "Todos")))
+    st.session_state["f_producto"] = f_producto
+except Exception:
+    f_producto = "Todos"
+
 # Validar consistencia de datos automáticamente (método seguro)
 if f_ases:
     # Verificar que los asesores seleccionados existen en los datos actuales
@@ -4432,6 +4443,23 @@ try:
     # Estatus: filtro eliminado — no filtrar por estatus aquí
     est_mask = pd.Series(True, index=df_cli.index)
 
+    # Producto: aplicar filtro si se seleccionó algo distinto de 'Todos'
+    try:
+        if st.session_state.get("f_producto", "Todos") and st.session_state.get("f_producto", "Todos") != "Todos":
+            prod_sel = st.session_state.get("f_producto").upper()
+            if "producto" in df_cli.columns:
+                prod_col = df_cli["producto"].fillna("").str.upper()
+                prod_mask = prod_col == prod_sel
+            elif "Producto" in df_cli.columns:
+                prod_col = df_cli["Producto"].fillna("").str.upper()
+                prod_mask = prod_col == prod_sel
+            else:
+                prod_mask = pd.Series(True, index=df_cli.index)
+        else:
+            prod_mask = pd.Series(True, index=df_cli.index)
+    except Exception:
+        prod_mask = pd.Series(True, index=df_cli.index)
+
     # Fuente: si está vacío o tiene todos, no filtrar
     try:
         if not f_fuente or len(f_fuente) == 0 or set(f_fuente) == set(FUENTE_ALL):
@@ -4451,7 +4479,7 @@ except Exception as e:
     est_mask = pd.Series(True, index=df_cli.index)
     fuente_mask = pd.Series(True, index=df_cli.index)
 
-df_ver = df_cli[suc_mask & est_mask & asesor_mask & fuente_mask].copy()
+df_ver = df_cli[suc_mask & est_mask & asesor_mask & fuente_mask & prod_mask].copy()
 
 # Resumen
 st.sidebar.markdown("---")
