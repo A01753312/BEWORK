@@ -5551,11 +5551,11 @@ with tab_cli:
                             pass
                     except Exception:
                         pass
-                    st.success(f"Se recargaron {len(df_new)} registros desde Google Sheets y se actualizó el CSV local.")
+                    # Se omiten mensajes de éxito para el usuario y no se fuerza rerun
                     df_cli = df_new
-                    st.experimental_rerun()
-            except Exception as e:
-                st.error(f"Error recargando desde Google Sheets: {e}")
+            except Exception:
+                # Omitir mensajes de error visibles al usuario durante la recarga
+                pass
     
     # Usar los datos ya filtrados del sidebar (df_ver)
     # que incluye todos los filtros aplicados correctamente
