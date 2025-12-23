@@ -5976,6 +5976,11 @@ with tab_cli:
                 except Exception:
                     cur = {}
 
+                # Producto seleccionado fuera del form para permitir actualizar dinámicamente el listado de estatus
+                producto_n = st.selectbox("Producto *", ["MEJORAVIT", "INBURSA", "MULTIVA"], index=( ["MEJORAVIT","INBURSA","MULTIVA"].index(cur.get("producto")) if cur.get("producto") in ["MEJORAVIT","INBURSA","MULTIVA"] else 0), key=f"edit_producto_{cid_quick}")
+                # Nuevo asesor toggle (igual que en alta)
+                st.checkbox("Nuevo asesor (marca para escribir nombre y apellido)", key=f"edit_new_asesor_toggle_{cid_quick}", help="Marca para ingresar manualmente el nombre y apellido del asesor")
+
                 with st.form(f"form_edit_cliente_{cid_quick}", clear_on_submit=False):
                     st.markdown(f"**Editar cliente {cid_quick} — {cur.get('nombre','')}**")
                     c1, c2, c3 = st.columns(3)
@@ -5995,8 +6000,18 @@ with tab_cli:
                         except Exception:
                             fecha_disp_val = date.today()
                         fecha_dispersion_n = st.date_input("Fecha dispersión", value=fecha_disp_val, key=f"edit_fecha_disp_{cid_quick}")
-                        estatus_n = st.selectbox("Estatus", ESTATUS_OPCIONES, index=ESTATUS_OPCIONES.index(cur.get("estatus")) if cur.get("estatus") in ESTATUS_OPCIONES else 0, key=f"edit_estatus_{cid_quick}")
-                        segundo_estatus_n = st.selectbox("Segundo estatus", SEGUNDO_ESTATUS_OPCIONES, index=SEGUNDO_ESTATUS_OPCIONES.index(cur.get("segundo_estatus")) if cur.get("segundo_estatus") in SEGUNDO_ESTATUS_OPCIONES else 0, key=f"edit_seg_{cid_quick}")
+                        # Mostrar estatus según producto seleccionado (misma lógica que en alta)
+                        prod_upper = (producto_n or "").strip().upper()
+                        if prod_upper == "INBURSA":
+                            estatus_choices = ESTATUS_INBURSA_OPCIONES or ESTATUS_OPCIONES
+                        elif prod_upper == "MULTIVA":
+                            estatus_choices = ESTATUS_MULTIVA_OPCIONES or ESTATUS_OPCIONES
+                        elif prod_upper == "MEJORAVIT":
+                            estatus_choices = ESTATUS_MEJORAVIT_OPCIONES or ESTATUS_OPCIONES
+                        else:
+                            estatus_choices = ESTATUS_OPCIONES
+                        estatus_key = f"edit_estatus_{cid_quick}_{prod_upper}"
+                        estatus_n = st.selectbox("Estatus", estatus_choices, index=(estatus_choices.index(cur.get("estatus")) if cur.get("estatus") in estatus_choices else 0), key=estatus_key)
                     with c3:
                         monto_prop_n = st.text_input("Monto propuesta", value=cur.get("monto_propuesta", ""), key=f"edit_monto_prop_{cid_quick}")
                         monto_final_n = st.text_input("Monto final", value=cur.get("monto_final", ""), key=f"edit_monto_final_{cid_quick}")
@@ -6004,6 +6019,34 @@ with tab_cli:
                         telefono_n = st.text_input("Teléfono", value=cur.get("telefono", ""), key=f"edit_tel_{cid_quick}")
                         correo_n = st.text_input("Correo", value=cur.get("correo", ""), key=f"edit_correo_{cid_quick}")
                         fuente_n = st.text_input("Fuente", value=cur.get("fuente", ""), key=f"edit_fuente_{cid_quick}")
+
+                    # Bloque adicional: campos presentes en el formulario de alta
+                    with c1:
+                        tipo_tramite_n = st.selectbox("Tipo de trámite", ["Compra de deuda", "Renovacion", "Nuevo", "Adicional"], index=( ["Compra de deuda","Renovacion","Nuevo","Adicional"].index(cur.get("tipo_tramite")) if cur.get("tipo_tramite") in ["Compra de deuda","Renovacion","Nuevo","Adicional"] else 2), key=f"edit_tipo_tramite_{cid_quick}")
+                        fuente_select = st.selectbox("Fuente", ["LUZWARE", "LEADS", "SEGUIMIENTO"], index=( ["LUZWARE","LEADS","SEGUIMIENTO"].index(cur.get("fuente")) if cur.get("fuente") in ["LUZWARE","LEADS","SEGUIMIENTO"] else 1), key=f"edit_fuente_select_{cid_quick}")
+                        fuente_base_input = ""
+                        if fuente_select == "LUZWARE":
+                            fuente_base_input = st.text_input("Nombre de la base (LUZWARE) - escribir en mayúsculas", value=cur.get("fuente_base", ""), key=f"edit_fuente_base_{cid_quick}")
+                        sucursal_n = sucursal_n
+                    with c2:
+                        capacidad_n = st.text_input("Capacidad", value=cur.get("capacidad", ""), key=f"edit_capacidad_{cid_quick}")
+                        monto_solicitado_n = st.text_input("Monto Solicitado", value=cur.get("monto_propuesta", ""), key=f"edit_monto_solicitado_{cid_quick}")
+                        plazo_n = st.selectbox("Plazo (meses)", [12,24,36,28,54,60], index=( [12,24,36,28,54,60].index(int(cur.get("plazo"))) if cur.get("plazo") not in (None,"") and str(cur.get("plazo")).isdigit() and int(cur.get("plazo")) in [12,24,36,28,54,60] else 0), key=f"edit_plazo_{cid_quick}")
+                        estado_civil_n = st.selectbox("Estado civil", ["Casado","Soltero","Viudo","Divorciado"], index=( ["Casado","Soltero","Viudo","Divorciado"].index(cur.get("estado_civil")) if cur.get("estado_civil") in ["Casado","Soltero","Viudo","Divorciado"] else 1), key=f"edit_estado_civil_{cid_quick}")
+                    with c3:
+                        tipo_vivienda_n = st.selectbox("Tipo de vivienda", ["Propia","Renta"], index=( ["Propia","Renta"].index(cur.get("tipo_vivienda")) if cur.get("tipo_vivienda") in ["Propia","Renta"] else 0), key=f"edit_tipo_vivienda_{cid_quick}")
+                        # Referencias
+                        ref1_nombre_n = st.text_input("Referencia 1 - Nombre", value=cur.get("ref1_nombre", ""), key=f"edit_ref1_nombre_{cid_quick}")
+                        ref1_telefono_n = st.text_input("Referencia 1 - Teléfono", value=cur.get("ref1_telefono", ""), key=f"edit_ref1_telefono_{cid_quick}")
+                        ref1_parentesco_n = st.selectbox("Referencia 1 - Parentesco", ["Hijo","Espos@","Amig@","Familiar"], index=( ["Hijo","Espos@","Amig@","Familiar"].index(cur.get("ref1_parentesco")) if cur.get("ref1_parentesco") in ["Hijo","Espos@","Amig@","Familiar"] else 0), key=f"edit_ref1_parentesco_{cid_quick}")
+                        ref2_nombre_n = st.text_input("Referencia 2 - Nombre", value=cur.get("ref2_nombre", ""), key=f"edit_ref2_nombre_{cid_quick}")
+                        ref2_telefono_n = st.text_input("Referencia 2 - Teléfono", value=cur.get("ref2_telefono", ""), key=f"edit_ref2_telefono_{cid_quick}")
+                        ref2_parentesco_n = st.selectbox("Referencia 2 - Parentesco", ["Hijo","Espos@","Amig@","Familiar"], index=( ["Hijo","Espos@","Amig@","Familiar"].index(cur.get("ref2_parentesco")) if cur.get("ref2_parentesco") in ["Hijo","Espos@","Amig@","Familiar"] else 0), key=f"edit_ref2_parentesco_{cid_quick}")
+                        antiguedad_cuenta_n = st.text_input("Antigüedad de la cuenta registrada", value=cur.get("antiguedad_cuenta", ""), key=f"edit_antiguedad_{cid_quick}")
+                        usuario_cipre_n = st.text_input("Usuario Cipre", value=cur.get("usuario_cipre", ""), key=f"edit_usuario_cipre_{cid_quick}")
+                        contrasena_n = st.text_input("Contraseña", value=cur.get("contrasena", ""), key=f"edit_contrasena_{cid_quick}")
+
+                    obs_n = st.text_area("Observaciones", value=cur.get("observaciones", ""), key=f"edit_obs_{cid_quick}")
 
                     obs_n = st.text_area("Observaciones", value=cur.get("observaciones", ""), key=f"edit_obs_{cid_quick}")
 
@@ -6015,13 +6058,29 @@ with tab_cli:
                             st.error("Cliente no encontrado en la base")
                         else:
                             base.at[cid_quick, "nombre"] = nombre_n.strip()
+                            base.at[cid_quick, "producto"] = producto_n
                             base.at[cid_quick, "sucursal"] = sucursal_n
                             base.at[cid_quick, "analista"] = analista_n.strip()
                             base.at[cid_quick, "fecha_ingreso"] = str(fecha_ingreso_n)
                             base.at[cid_quick, "fecha_dispersion"] = str(fecha_dispersion_n)
                             base.at[cid_quick, "estatus"] = estatus_n
-                            base.at[cid_quick, "segundo_estatus"] = segundo_estatus_n
-                            base.at[cid_quick, "monto_propuesta"] = str(monto_prop_n).strip()
+                            base.at[cid_quick, "monto_propuesta"] = str(monto_solicitado_n or monto_prop_n).strip()
+                            base.at[cid_quick, "fuente"] = fuente_select or fuente_n
+                            base.at[cid_quick, "fuente_base"] = (fuente_base_input or cur.get("fuente_base", "")).strip()
+                            base.at[cid_quick, "tipo_tramite"] = tipo_tramite_n
+                            base.at[cid_quick, "capacidad"] = capacidad_n
+                            base.at[cid_quick, "plazo"] = str(plazo_n)
+                            base.at[cid_quick, "estado_civil"] = estado_civil_n
+                            base.at[cid_quick, "tipo_vivienda"] = tipo_vivienda_n
+                            base.at[cid_quick, "ref1_nombre"] = ref1_nombre_n.strip()
+                            base.at[cid_quick, "ref1_telefono"] = ref1_telefono_n.strip()
+                            base.at[cid_quick, "ref1_parentesco"] = ref1_parentesco_n.strip()
+                            base.at[cid_quick, "ref2_nombre"] = ref2_nombre_n.strip()
+                            base.at[cid_quick, "ref2_telefono"] = ref2_telefono_n.strip()
+                            base.at[cid_quick, "ref2_parentesco"] = ref2_parentesco_n.strip()
+                            base.at[cid_quick, "antiguedad_cuenta"] = antiguedad_cuenta_n.strip()
+                            base.at[cid_quick, "usuario_cipre"] = usuario_cipre_n.strip()
+                            base.at[cid_quick, "contrasena"] = contrasena_n.strip()
                             base.at[cid_quick, "monto_final"] = str(monto_final_n).strip()
                             base.at[cid_quick, "score"] = str(score_n).strip()
                             base.at[cid_quick, "telefono"] = telefono_n.strip()
@@ -6029,7 +6088,18 @@ with tab_cli:
                             base.at[cid_quick, "fuente"] = fuente_n.strip()
                             base.at[cid_quick, "observaciones"] = obs_n.strip()
 
-                            base.at[cid_quick, "asesor"] = find_matching_asesor(base.at[cid_quick, "asesor"], base.reset_index())
+                            # Resolver asesor: si se indicó nuevo asesor usarlo, si no usar selección previa
+                            if st.session_state.get(f"edit_new_asesor_toggle_{cid_quick}", False):
+                                asesor_val = st.session_state.get(f"edit_nuevo_asesor_{cid_quick}", "").strip()
+                            else:
+                                # construir lista de asesores existente igual que en alta
+                                raw_ases = [a for a in df_cli["asesor"].fillna("").unique() if str(a).strip()]
+                                asesores_exist = sorted(list(dict.fromkeys([_norm_sin_asesor_label(a) for a in raw_ases])))
+                                asesores_choices = list(dict.fromkeys(["(Sin asesor)"] + asesores_exist))
+                                asesor_select_key = f"edit_ases_select_{cid_quick}"
+                                # Si no existe la selección en session_state, tomar el valor actual
+                                asesor_val = base.at[cid_quick, "asesor"] if base.at[cid_quick, "asesor"] else ""
+                            base.at[cid_quick, "asesor"] = find_matching_asesor(asesor_val, base.reset_index())
 
                             # comparar y registrar cambios en historial
                             try:
@@ -6045,7 +6115,7 @@ with tab_cli:
                                         diffs.append((c, oldv, newv))
                                 if diffs:
                                     detalles = ", ".join([f"{c}: '{o}' → '{n}'" for c, o, n in diffs])
-                                    append_historial(cid_quick, base.at[cid_quick, "nombre"], old_row.get("estatus", ""), base.at[cid_quick, "estatus"], old_row.get("segundo_estatus", ""), base.at[cid_quick, "segundo_estatus"], detalles, action="CLIENTE MODIFICADO", actor=actor)
+                                    append_historial(cid_quick, base.at[cid_quick, "nombre"], old_row.get("estatus", ""), base.at[cid_quick, "estatus"], None, None, detalles, action="CLIENTE MODIFICADO", actor=actor)
                             except Exception:
                                 pass
 
