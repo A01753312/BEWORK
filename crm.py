@@ -4667,9 +4667,6 @@ with tab_dash:
         total_presupuesto = analisis_financiero['total_propuesto']
         st.markdown(f"**Total Presupuesto General: ${total_presupuesto:,.2f}**")
 
-        # Indicar la fuente de los montos mostrados
-        st.caption("Fuente: columna 'monto_final' (total vendido) — cifras exactas mostradas sin abreviaturas")
-
         if not analisis_financiero['montos_por_estatus'].empty:
             # Filtrar solo estatus con monto final vendido > 0
             estatus_con_monto = analisis_financiero['montos_por_estatus'][
