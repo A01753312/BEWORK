@@ -6174,11 +6174,8 @@ with tab_docs:
                     else:
                         st.info("No seleccionaste archivos para subir.")
 
-            st.markdown("—")
             if _is_dispersion(estatus_cliente_sel):
                 st.success("Estatus actual: DISPERSADO — sube el Contrato en el formulario de arriba.")
-            else:
-                st.info("Para subir el Contrato, cambia el estatus del cliente a **en dispersión**.")
 
             # token para forzar re-render de botones de descarga cuando haya uploads
             tok_key = f"docs_token_{cid_sel}"
