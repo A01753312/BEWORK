@@ -1067,7 +1067,7 @@ def generar_presentacion_dashboard(df_cli: pd.DataFrame) -> bytes:
     # Total presupuesto
     presupuesto_box = slide.shapes.add_textbox(Inches(0.5), Inches(1), Inches(9), Inches(0.4))
     presupuesto_frame = presupuesto_box.text_frame
-    presupuesto_frame.text = f"Total Presupuesto General: {formatear_monto(total_presupuesto)}"
+    presupuesto_frame.text = f"Total Presupuesto General: ${total_presupuesto:,.2f}"
     presupuesto_p = presupuesto_frame.paragraphs[0]
     presupuesto_p.font.size = Pt(18)
     presupuesto_p.font.bold = True
@@ -4665,7 +4665,7 @@ with tab_dash:
 
         # Mostrar total de presupuesto general (informativo)
         total_presupuesto = analisis_financiero['total_propuesto']
-        st.markdown(f"**Total Presupuesto General: {formatear_monto(total_presupuesto)}**")
+        st.markdown(f"**Total Presupuesto General: ${total_presupuesto:,.2f}**")
 
         # Indicar la fuente de los montos mostrados
         st.caption("Fuente: columna 'monto_final' (total vendido) — cifras exactas mostradas sin abreviaturas")
@@ -4703,10 +4703,10 @@ with tab_dash:
                             {estatus}
                         </div>
                         <div style="font-size: 18px; font-weight: bold; color: #212529; margin: 4px 0;">
-                            ${monto_total:,.0f}
+                            ${monto_total:,.2f}
                         </div>
                         <div style="font-size: 11px; color: #6c757d;">
-                            {cantidad} clientes • Promedio vendido: ${promedio_vendido:,.0f}
+                            {cantidad} clientes • Promedio vendido: ${promedio_vendido:,.2f}
                         </div>
                     </div>
                     """, unsafe_allow_html=True)
