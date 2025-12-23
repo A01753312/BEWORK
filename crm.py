@@ -1446,7 +1446,8 @@ DOC_CATEGORIAS = {
 }
 
 # === CONFIGURACIÓN GOOGLE SHEETS ===
-USE_GSHEETS = True   # pon False si quieres trabajar sólo local
+# Desactivar integración con Google Sheets: gestión de catálogos deshabilitada
+USE_GSHEETS = False   # Gestión de catálogos desactivada
 GSHEET_ID      = "1wD9D3OsSB4HXel1LIGo0h6xNdcjZEF-iHue-Hl4z1pg"
 GSHEET_TAB     = "clientes"    # tu pestaña principal
 GSHEET_HISTTAB = "historial"   # tu pestaña de historial
@@ -4307,144 +4308,7 @@ if is_admin():
                 
         # El soporte de 2° Estatus fue removido; no mostrar botón
 
-    # -- Gestión unificada (solo admin) -- (OPTIMIZADA)
-    with st.sidebar.expander("⚙️ Gestión de Catálogos", expanded=False):
-        st.caption("Administrar sucursales, asesores y estatus")
-        
-        # Tabs para organizar mejor la gestión
-        tab_suc, tab_ases, tab_est = st.tabs(["🏢 Sucursales", "👥 Asesores", "📊 Estatus"])
-        
-        # === TAB SUCURSALES ===
-        with tab_suc:
-            # Manejar reset de campo si está marcado
-            if st.session_state.get("reset_new_suc", False):
-                st.session_state["new_suc"] = ""
-                st.session_state["reset_new_suc"] = False
-            
-            # Agregar nueva sucursal
-            col1, col2 = st.columns([3, 1])
-            with col1:
-                nueva_suc = st.text_input("Nueva sucursal:", key="new_suc", placeholder="Ej. CDMX_CENTRO")
-            with col2:
-                if st.button("➕", key="add_suc", help="Agregar sucursal"):
-                    if nueva_suc.strip():
-                        if nueva_suc.strip() not in SUCURSALES:
-                            SUCURSALES.append(nueva_suc.strip())
-                            save_sucursales(SUCURSALES)
-                            st.toast(f"✅ Sucursal '{nueva_suc.strip()}' agregada")
-                            # Marcar para reset en próximo rerun
-                            st.session_state["reset_new_suc"] = True
-                            st.rerun()
-                        else:
-                            st.toast("⚠️ Sucursal ya existe")
-                    else:
-                        st.toast("⚠️ Nombre vacío")
-            
-            # Lista de sucursales existentes
-            if SUCURSALES:
-                st.caption(f"Sucursales ({len(SUCURSALES)}):")
-                for i, suc in enumerate(SUCURSALES):
-                    col1, col2 = st.columns([4, 1])
-                    with col1:
-                        st.write(f"• {suc}")
-                    with col2:
-                        if st.button("🗑️", key=f"del_suc_{i}", help=f"Eliminar {suc}"):
-                            # Verificar si está en uso
-                            df_check = cargar_clientes()
-                            en_uso = False
-                            if not df_check.empty and 'sucursal' in df_check.columns:
-                                en_uso = (df_check['sucursal'] == suc).any()
-                            
-                            if en_uso:
-                                st.toast(f"⚠️ '{suc}' está en uso por clientes")
-                            else:
-                                SUCURSALES.remove(suc)
-                                save_sucursales(SUCURSALES)
-                                st.toast(f"✅ Sucursal '{suc}' eliminada")
-                                st.rerun()
-        
-        # === TAB ASESORES ===
-        with tab_ases:
-            # Manejar reset de campo si está marcado
-            if st.session_state.get("reset_new_asesor", False):
-                st.session_state["new_asesor"] = ""
-                st.session_state["reset_new_asesor"] = False
-            
-            # Agregar nuevo asesor
-            col1, col2 = st.columns([3, 1])
-            with col1:
-                nuevo_asesor = st.text_input("Nuevo asesor:", key="new_asesor", placeholder="Ej. Juan Pérez")
-            with col2:
-                if st.button("➕", key="add_asesor", help="Agregar asesor"):
-                    if nuevo_asesor.strip():
-                        # Los asesores se manejan dinámicamente, pero podemos mantener una lista maestra
-                        st.toast(f"✅ Asesor '{nuevo_asesor.strip()}' listo para usar")
-                        st.session_state["reset_new_asesor"] = True
-                        # Forzar actualización de filtros para incluir nuevo asesor
-                        st.session_state["_filters_token"] = st.session_state.get("_filters_token", 0) + 1
-                        st.rerun()
-                    else:
-                        st.toast("⚠️ Nombre vacío")
-            
-            # Mostrar asesores existentes (desde la base de datos)
-            df_check = cargar_clientes()
-            if not df_check.empty and 'asesor' in df_check.columns:
-                asesores_existentes = df_check['asesor'].fillna("").unique()
-                asesores_existentes = [a for a in asesores_existentes if a.strip()]
-                if asesores_existentes:
-                    st.caption(f"Asesores en uso ({len(asesores_existentes)}):")
-                    for asesor in sorted(asesores_existentes):
-                        st.write(f"• {asesor}")
-        
-        # === TAB ESTATUS ===
-        with tab_est: # type: ignore
-            # Manejar reset de campo si está marcado
-            if st.session_state.get("reset_new_estatus", False):
-                st.session_state["new_estatus"] = ""
-                st.session_state["reset_new_estatus"] = False
-            
-            # Agregar nuevo estatus
-            col1, col2 = st.columns([3, 1])
-            with col1:
-                nuevo_estatus = st.text_input("Nuevo estatus:", key="new_estatus", placeholder="Ej. EN_REVISION")
-            with col2:
-                if st.button("➕", key="add_estatus", help="Agregar estatus"):
-                    if nuevo_estatus.strip():
-                        if nuevo_estatus.strip() not in ESTATUS_OPCIONES:
-                            ESTATUS_OPCIONES.append(nuevo_estatus.strip())
-                            save_estatus(ESTATUS_OPCIONES)
-                            st.toast(f"✅ Estatus '{nuevo_estatus.strip()}' agregado")
-                            st.session_state["reset_new_estatus"] = True
-                            st.rerun()
-                        else:
-                            st.toast("⚠️ Estatus ya existe")
-                    else:
-                        st.toast("⚠️ Nombre vacío")
-            
-            # Lista de estatus existentes
-            if ESTATUS_OPCIONES:
-                st.caption(f"Estatus ({len(ESTATUS_OPCIONES)}):")
-                for i, est in enumerate(ESTATUS_OPCIONES):
-                    col1, col2 = st.columns([4, 1])
-                    with col1:
-                        st.write(f"• {est}")
-                    with col2:
-                        if st.button("🗑️", key=f"del_est_{i}", help=f"Eliminar {est}"):
-                            # Verificar si está en uso
-                            df_check = cargar_clientes()
-                            en_uso = False
-                            if not df_check.empty and 'estatus' in df_check.columns:
-                                en_uso = (df_check['estatus'] == est).any()
-                            
-                            if en_uso:
-                                st.toast(f"⚠️ '{est}' está en uso por clientes")
-                            else:
-                                ESTATUS_OPCIONES.remove(est)
-                                save_estatus(ESTATUS_OPCIONES)
-                                st.toast(f"✅ Estatus '{est}' eliminado")
-                                st.rerun()
-        
-        # (Gestión de 2° Estatus eliminada)
+    # (Se eliminó la sección de "⚙️ Gestión de Catálogos" por solicitud.)
 
 # ---------- Sidebar (filtros + acciones) ----------
 st.sidebar.title("👤 CRM")
