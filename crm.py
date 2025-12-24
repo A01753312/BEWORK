@@ -5343,16 +5343,10 @@ with tab_dash:
         # Panel de análisis financiero removido por configuración del usuario
 
 # ===== Clientes (alta + edición) =====
-with tab_prosp:
-    st.subheader("🧲 Prospectos")
-    df_prosp_view = cargar_prospectos()
-    if df_prosp_view.empty:
-        st.info("Sin prospectos en la hoja 'prospecto' aún.")
-    else:
-        st.dataframe(df_prosp_view, use_container_width=True)
-        # --- END NEW ---
+with tab_cli:
+    st.subheader("🆕 Alta de clientes")
 
-        with st.form("form_alta_cliente", clear_on_submit=True):
+    with st.form("form_alta_cliente", clear_on_submit=True):
             c1, c2, c3 = st.columns(3)
             with c1:
                 # Primer bloque: Tipo de trámite, Producto, Fuente, Nombre, Teléfono
@@ -5990,23 +5984,11 @@ with tab_prosp:
 # ===== Prospectos =====
 with tab_prosp:
     st.subheader("🧲 Prospectos")
-    df_cli = cargar_y_corregir_clientes()
-    if df_cli is None or df_cli.empty:
-        st.info("Sin clientes aún.")
+    df_prosp_view = cargar_prospectos()
+    if df_prosp_view.empty:
+        st.info("Sin prospectos en la hoja 'prospecto' aún.")
     else:
-        try:
-            df_prosp = df_cli[df_cli.get("registro_tipo", "").astype(str).str.strip().str.lower() == "prospecto"].copy()
-        except Exception:
-            df_prosp = pd.DataFrame(columns=[c for c in df_cli.columns])
-
-        if df_prosp.empty:
-            st.info("Sin prospectos aún.")
-        else:
-            # Mostrar solo columnas públicas de interés (mismo orden que hoja)
-            cols = [c for c in SHEET_INTERNAL_COLUMNS if c in df_prosp.columns]
-            if not cols:
-                cols = [c for c in df_prosp.columns]
-            st.dataframe(df_prosp[cols], use_container_width=True)
+        st.dataframe(df_prosp_view, use_container_width=True)
 
 # ===== Documentos (por cliente) =====
 # Safety: garantizar que las pestañas fueron creadas; si no, volver a crearlas para evitar NameError.
