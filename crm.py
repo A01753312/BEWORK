@@ -3213,17 +3213,19 @@ def cargar_prospectos(force_reload: bool = False) -> pd.DataFrame:
                         df = pd.DataFrame()
                     df = df.fillna("").astype(str)
 
-                # Mapear a nombres internos si los encabezados son humanos
-                header_mapping = dict(zip(SHEET_HEADERS, SHEET_INTERNAL_COLUMNS))
+                # Mapear cualquier encabezado humano presente a nombres internos (parcial, por intersección)
                 try:
-                    if set(SHEET_HEADERS).issubset(set(df.columns)):
-                        df_int = df.rename(columns=header_mapping)
-                    else:
-                        df_int = df.copy()
+                    rename_map = {}
+                    for h, internal in zip(SHEET_HEADERS, SHEET_INTERNAL_COLUMNS):
+                        if h in df.columns:
+                            rename_map[h] = internal
+                    if rename_map:
+                        df = df.rename(columns=rename_map)
                 except Exception:
-                    df_int = df.copy()
+                    pass
 
-                # Asegurar columnas internas y reordenar
+                # Si ya trae nombres internos, mantenerlos; si trae otros, no eliminar, pero priorizar internos
+                df_int = df.copy()
                 for c in SHEET_INTERNAL_COLUMNS:
                     if c not in df_int.columns:
                         df_int[c] = ""
@@ -3235,6 +3237,27 @@ def cargar_prospectos(force_reload: bool = False) -> pd.DataFrame:
                 return df_view
         except Exception:
             pass
+
+    # 2) Fallback a CSV local de prospectos
+    try:
+        csv_path = DATA_DIR / "prospecto.csv"
+        if csv_path.exists():
+            df = pd.read_csv(csv_path, dtype=str).fillna("")
+            # Si el CSV usa internos, renombrar a humanos
+            try:
+                rename_map = {internal: h for internal, h in zip(SHEET_INTERNAL_COLUMNS, SHEET_HEADERS)}
+                df_view = df.rename(columns=rename_map)
+            except Exception:
+                df_view = df.copy()
+            # Asegurar orden de headers humanos y columnas faltantes
+            for h in SHEET_HEADERS:
+                if h not in df_view.columns:
+                    df_view[h] = ""
+            df_view = df_view[[h for h in SHEET_HEADERS if h in df_view.columns]]
+            return df_view
+    except Exception:
+        pass
+
     # 3) Vacío si no hay datos
     return pd.DataFrame(columns=SHEET_HEADERS)
 
