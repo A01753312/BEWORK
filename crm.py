@@ -3299,10 +3299,34 @@ def guardar_clientes_gsheet_append(df_nuevo: pd.DataFrame, sheet_tab: str | None
 
         df_actual = _sheet_to_df(ws)
 
-        # If the sheet is empty, write the dataframe with headers (one shot).
+        # If the sheet is empty (get_as_dataframe couldn't read rows), avoid blind overwrite.
         if df_actual.empty:
             try:
-                set_with_dataframe(ws, df_sheet, include_index=False, include_column_header=True, resize=True)
+                # Check if the worksheet has any values (maybe headers that get_as_dataframe didn't parse)
+                first_row = []
+                try:
+                    first_row = ws.row_values(1)
+                except Exception:
+                    first_row = []
+
+                # If there's a non-empty first row, assume headers exist -> append new rows instead of overwriting
+                if first_row and any(str(x).strip() for x in first_row):
+                    try:
+                        rows = df_sheet.values.tolist() if hasattr(df_sheet, 'values') else df_sheet.tolist()
+                        if rows:
+                            ws.append_rows(rows, value_input_option="RAW")
+                    except Exception:
+                        # fallback to set_with_dataframe if append fails
+                        try:
+                            set_with_dataframe(ws, df_sheet, include_index=False, include_column_header=True, resize=True)
+                        except Exception:
+                            pass
+                else:
+                    # No header detected: write headers + data
+                    try:
+                        set_with_dataframe(ws, df_sheet, include_index=False, include_column_header=True, resize=True)
+                    except Exception:
+                        pass
             except Exception:
                 pass
             return
