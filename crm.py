@@ -26,6 +26,7 @@ DOCS_DIR = DATA_DIR / "docs"
 DOCS_DIR.mkdir(parents=True, exist_ok=True)
 CLIENTES_CSV = DATA_DIR / "clientes.csv"
 CLIENTES_XLSX = DATA_DIR / "clientes.xlsx"
+PROSPECTOS_CSV = DATA_DIR / "prospecto.csv"
 
 # Inicializar claves en session_state para evitar AttributeError
 if "drive_creds" not in st.session_state:
@@ -1450,6 +1451,7 @@ DOC_CATEGORIAS = {
 USE_GSHEETS = True   # Gestión de catálogos habilitada
 GSHEET_ID      = "1wD9D3OsSB4HXel1LIGo0h6xNdcjZEF-iHue-Hl4z1pg"
 GSHEET_TAB     = "clientes"    # tu pestaña principal
+GSHEET_PROSPECTOS_TAB = "prospecto"  # pestaña para prospectos
 GSHEET_HISTTAB = "historial"   # tu pestaña de historial
 
 # Pestañas de catálogos
@@ -3454,6 +3456,42 @@ def guardar_clientes_gsheet_append(df_nuevo: pd.DataFrame, sheet_tab: str | None
     except Exception:
         pass
 
+
+def guardar_prospectos(df_rows: pd.DataFrame) -> bool:
+    """Guarda prospectos en CSV local y los sincroniza con la pestaña dedicada en Sheets.
+
+    Retorna True si la sincronización con Google Sheets fue exitosa, False si solo se guardó localmente.
+    """
+    if df_rows is None or df_rows.empty:
+        return False
+
+    # Alinear columnas con el esquema principal
+    df_rows = df_rows.copy()
+    for c in COLUMNS:
+        if c not in df_rows.columns:
+            df_rows[c] = ""
+    df_rows = df_rows[[c for c in COLUMNS if c in df_rows.columns]].fillna("")
+
+    # Respaldo local para no perder datos si falla la conexión
+    try:
+        if PROSPECTOS_CSV.exists():
+            existing = pd.read_csv(PROSPECTOS_CSV, dtype=str).fillna("")
+        else:
+            existing = pd.DataFrame(columns=COLUMNS)
+        pd.concat([existing, df_rows], ignore_index=True).to_csv(PROSPECTOS_CSV, index=False, encoding="utf-8")
+    except Exception:
+        pass
+
+    # Intentar sincronizar con Google Sheets
+    if not USE_GSHEETS:
+        return False
+
+    try:
+        guardar_clientes_gsheet_append(df_rows, sheet_tab=GSHEET_PROSPECTOS_TAB)
+        return True
+    except Exception:
+        return False
+
 # Función cargar_y_corregir_clientes optimizada
 # Función cargar_y_corregir_clientes optimizada
 def cargar_y_corregir_clientes(force_reload: bool = False) -> pd.DataFrame:
@@ -5371,16 +5409,19 @@ with tab_cli:
                             nuevo["registro_tipo"] = registro_tipo_n
                         except Exception:
                             pass
+                        is_prospecto = (registro_tipo_n or "").strip().lower() == "prospecto"
                         # Siempre guardar localmente la base completa
                         # Guardar localmente y enrutar el sync a Sheets según tipo
-                        if (registro_tipo_n or "").strip().lower() == "prospecto":
-                            # No sincronizar la base completa a la hoja principal; solo append la fila nueva a 'prospecto'
+                        if is_prospecto:
+                            # No sincronizar la base completa a la hoja principal; solo append la fila nueva a la pestaña de prospectos
                             guardar_clientes(base, sync_gsheet=False)
                             try:
                                 df_single = pd.DataFrame([nuevo])
-                                guardar_clientes_gsheet_append(df_single, sheet_tab="prospecto")
+                                synced = guardar_prospectos(df_single)
+                                if not synced:
+                                    st.warning("Prospecto guardado localmente; pendiente de sincronizar con la pestaña prospecto.")
                             except Exception:
-                                pass
+                                st.warning("Prospecto guardado localmente; pendiente de sincronizar con la pestaña prospecto.")
                         else:
                             # Venta: comportamiento por defecto (sincronizar a la hoja principal)
                             guardar_clientes(base)
