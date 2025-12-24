@@ -3271,6 +3271,7 @@ def guardar_clientes_gsheet_append(df_nuevo: pd.DataFrame, sheet_tab: str | None
 
     try:
         target_tab = sheet_tab or GSHEET_TAB
+        _gs_debug(f"guardar_clientes_gsheet_append: target_tab={target_tab}")
         ws = _gs_open_worksheet(target_tab)
         if ws is None:
             return
@@ -3382,6 +3383,7 @@ def guardar_clientes_gsheet_append(df_nuevo: pd.DataFrame, sheet_tab: str | None
 
         # 1) Nuevos: append en lote (crear filas completas alineadas a la hoja)
         nuevos_ids = [i for i in idx_nuevo.keys() if i not in idx_actual]
+        _gs_debug(f"nuevos_ids count={len(nuevos_ids)} sample={nuevos_ids[:5]}")
         if nuevos_ids:
             try:
                 rows_to_append = []
@@ -5345,10 +5347,15 @@ with tab_cli:
                             nuevo["registro_tipo"] = registro_tipo_n
                         except Exception:
                             pass
-                        if (registro_tipo_n or "").strip().lower() == "prospecto":
-                            guardar_clientes(base, gsheet_tab="prospecto")
-                        else:
-                            guardar_clientes(base)
+                        # Siempre guardar localmente la base completa
+                        guardar_clientes(base)
+                        # Si es prospecto, además append solo la fila nueva a la pestaña 'prospecto'
+                        try:
+                            if (registro_tipo_n or "").strip().lower() == "prospecto":
+                                df_single = pd.DataFrame([nuevo])
+                                guardar_clientes_gsheet_append(df_single, sheet_tab="prospecto")
+                        except Exception:
+                            pass
                         # registrar creación en historial
                         actor = (current_user() or {}).get("user") or (current_user() or {}).get("email")
                         append_historial(cid, nuevo.get("nombre", ""), "", nuevo.get("estatus", ""), f"Creado por {actor}", action="CLIENTE AGREGADO", actor=actor)
