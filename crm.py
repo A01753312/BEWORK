@@ -3183,6 +3183,78 @@ def cargar_clientes(force_reload: bool = False) -> pd.DataFrame:
 
     return pd.DataFrame(columns=COLUMNS)
 
+def cargar_prospectos(force_reload: bool = False) -> pd.DataFrame:
+    """Carga los prospectos directamente desde la pestaña 'prospecto' de Google Sheets.
+
+    Retorna un DataFrame listo para mostrar con los encabezados humanos (SHEET_HEADERS).
+    Si falla la carga desde Sheets, intenta leer [data/prospecto.csv] como respaldo.
+    """
+    # 1) Intentar Google Sheets
+    if USE_GSHEETS:
+        try:
+            ws = _gs_open_worksheet(str(GSHEET_PROSPECTOS_TAB), force_reload=force_reload)
+            if ws is not None:
+                # Preferir get_all_records (más robusto con encabezados humanos)
+                try:
+                    records = ws.get_all_records()
+                    if records:
+                        df = pd.DataFrame(records).astype(str).fillna("")
+                    else:
+                        # Fallback
+                        df = get_as_dataframe(ws, evaluate_formulas=True, dtype=str, header=0).dropna(how="all")
+                        if df is None:
+                            df = pd.DataFrame()
+                        df = df.fillna("").astype(str)
+                except Exception:
+                    df = get_as_dataframe(ws, evaluate_formulas=True, dtype=str, header=0).dropna(how="all")
+                    if df is None:
+                        df = pd.DataFrame()
+                    df = df.fillna("").astype(str)
+
+                # Mapear a nombres internos si los encabezados son humanos
+                header_mapping = dict(zip(SHEET_HEADERS, SHEET_INTERNAL_COLUMNS))
+                try:
+                    if set(SHEET_HEADERS).issubset(set(df.columns)):
+                        df_int = df.rename(columns=header_mapping)
+                    else:
+                        df_int = df.copy()
+                except Exception:
+                    df_int = df.copy()
+
+                # Asegurar columnas internas y reordenar
+                for c in SHEET_INTERNAL_COLUMNS:
+                    if c not in df_int.columns:
+                        df_int[c] = ""
+                df_int = df_int[[c for c in SHEET_INTERNAL_COLUMNS if c in df_int.columns]].astype(str).fillna("")
+
+                # Preparar DF de visualización con encabezados humanos
+                df_view = df_int.copy()
+                df_view.columns = SHEET_HEADERS
+                return df_view
+        except Exception:
+            pass
+
+    # 2) Fallback a CSV local
+    try:
+        if PROSPECTOS_CSV.exists():
+            df = pd.read_csv(PROSPECTOS_CSV, dtype=str).fillna("")
+            # Convertir a encabezados humanos
+            header_mapping = {internal: human for internal, human in zip(SHEET_INTERNAL_COLUMNS, SHEET_HEADERS)}
+            df_view = df.copy()
+            # Si el CSV usa internos, renombrar a humanos
+            df_view = df_view.rename(columns=header_mapping)
+            # Reordenar a SHEET_HEADERS si existen
+            for h in SHEET_HEADERS:
+                if h not in df_view.columns:
+                    df_view[h] = ""
+            df_view = df_view[[h for h in SHEET_HEADERS if h in df_view.columns]]
+            return df_view
+    except Exception:
+        pass
+
+    # 3) Vacío si no hay datos
+    return pd.DataFrame(columns=SHEET_HEADERS)
+
 def guardar_clientes(df: pd.DataFrame, gsheet_tab: str | None = None, sync_gsheet: bool = True):
     """Guarda la base y actualiza caché"""
     global _CLIENTES_CACHE, _CLIENTES_CACHE_TIME
@@ -5271,23 +5343,13 @@ with tab_dash:
         # Panel de análisis financiero removido por configuración del usuario
 
 # ===== Clientes (alta + edición) =====
-with tab_cli:
-    # Cargar datos frescos para la pestaña de clientes
-    df_cli = cargar_y_corregir_clientes()
-    
-    # (refresh button moved next to the list header)
-
-    st.subheader("➕ Agregar cliente")
-    with st.expander("Formulario de alta", expanded=False):  # UI más limpia
-
-        # Producto seleccionado fuera del form para permitir actualizar dinámicamente el listado de estatus
-        producto_n = st.selectbox("Producto *", ["MEJORAVIT", "INBURSA", "MULTIVA"], index=0, key="form_producto")
-
-        # --- NEW: eliminar el selectbox "Asesor" (se pide quitar el "botoncito").
-        # Mantener sólo el checkbox para crear un nuevo asesor y el input para su nombre.
-        st.checkbox("Nuevo asesor (marca para escribir nombre y apellido)", key="form_new_asesor_toggle", help="Marca para ingresar manualmente el nombre y apellido del asesor")
-        if st.session_state.get("form_new_asesor_toggle", False):
-            st.text_input("Nombre y apellido del nuevo asesor", placeholder="Ej. Juan Pérez", key="form_nuevo_asesor")
+with tab_prosp:
+    st.subheader("🧲 Prospectos")
+    df_prosp_view = cargar_prospectos()
+    if df_prosp_view.empty:
+        st.info("Sin prospectos en la hoja 'prospecto' aún.")
+    else:
+        st.dataframe(df_prosp_view, use_container_width=True)
         # --- END NEW ---
 
         with st.form("form_alta_cliente", clear_on_submit=True):
