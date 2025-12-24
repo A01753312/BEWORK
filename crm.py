@@ -3425,7 +3425,19 @@ def guardar_clientes_gsheet_append(df_nuevo: pd.DataFrame, sheet_tab: str | None
                 pass
 
         # 2) Actualizados: enable updates to sync existing rows by ID.
+        # For the 'prospecto' tab, enforce append-only behavior (no updates),
+        # so repeated IDs will create new rows rather than overwriting.
+        try:
+            prospecto_tab = str(GSHEET_PROSPECTOS_TAB).strip().lower() if 'GSHEET_PROSPECTOS_TAB' in globals() else 'prospecto'
+        except Exception:
+            prospecto_tab = 'prospecto'
         DO_UPDATES = True
+        try:
+            if str(target_tab).strip().lower() == prospecto_tab:
+                DO_UPDATES = False
+                _gs_debug("Append-only mode enabled for prospecto tab: skipping updates")
+        except Exception:
+            pass
         comunes_ids = [i for i in idx_nuevo.keys() if i in idx_actual]
         if comunes_ids:
             _gs_debug(f"Detected {len(comunes_ids)} existing ids; DO_UPDATES={DO_UPDATES}")
