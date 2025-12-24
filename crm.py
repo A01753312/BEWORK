@@ -3182,7 +3182,7 @@ def cargar_clientes(force_reload: bool = False) -> pd.DataFrame:
 
     return pd.DataFrame(columns=COLUMNS)
 
-def guardar_clientes(df: pd.DataFrame):
+def guardar_clientes(df: pd.DataFrame, gsheet_tab: str | None = None):
     """Guarda la base y actualiza caché"""
     global _CLIENTES_CACHE, _CLIENTES_CACHE_TIME
     
@@ -3232,7 +3232,7 @@ def guardar_clientes(df: pd.DataFrame):
                         fh.write(f"{datetime.now().isoformat()} - guardar_clientes called; df_rows={len(df_to_save)}\n")
                 except Exception:
                     pass
-                guardar_clientes_gsheet_append(df_to_save)
+                guardar_clientes_gsheet_append(df_to_save, sheet_tab=gsheet_tab)
             except Exception:
                 pass
 
@@ -3256,7 +3256,7 @@ def _sheet_to_df(ws) -> pd.DataFrame:
         return pd.DataFrame()
     return dfsh.fillna("").astype(str)
 
-def guardar_clientes_gsheet_append(df_nuevo: pd.DataFrame):
+def guardar_clientes_gsheet_append(df_nuevo: pd.DataFrame, sheet_tab: str | None = None):
     """Versión optimizada: solo actualiza filas modificadas"""
     if df_nuevo is None or df_nuevo.empty:
         return
@@ -3270,7 +3270,8 @@ def guardar_clientes_gsheet_append(df_nuevo: pd.DataFrame):
             pass
 
     try:
-        ws = _gs_open_worksheet(GSHEET_TAB)
+        target_tab = sheet_tab or GSHEET_TAB
+        ws = _gs_open_worksheet(target_tab)
         if ws is None:
             return
             
@@ -5197,6 +5198,8 @@ with tab_cli:
                     fuente_base_input = st.text_input("Nombre de la base (LUZWARE) - escribir en mayúsculas")
                 nombre_n = st.text_input("Nombre *")
                 telefono_n = st.text_input("Teléfono")
+                # Tipo de registro: Venta (normal) o Prospecto (guardar en hoja 'prospecto')
+                registro_tipo_n = st.selectbox("Tipo de registro", ["Venta", "Prospecto"], index=0, key="form_tipo_registro")
                 sucursal_n = st.selectbox("Sucursal *", SUCURSALES)
             with c2:
                 fecha_ingreso_n = st.date_input("Fecha ingreso", value=date.today())
@@ -5337,7 +5340,15 @@ with tab_cli:
                             "fase": "fase1"
                         }
                         base = pd.concat([df_cli, pd.DataFrame([nuevo])], ignore_index=True)
-                        guardar_clientes(base)
+                        # Store registro type locally and route Google Sheets append accordingly
+                        try:
+                            nuevo["registro_tipo"] = registro_tipo_n
+                        except Exception:
+                            pass
+                        if (registro_tipo_n or "").strip().lower() == "prospecto":
+                            guardar_clientes(base, gsheet_tab="prospecto")
+                        else:
+                            guardar_clientes(base)
                         # registrar creación en historial
                         actor = (current_user() or {}).get("user") or (current_user() or {}).get("email")
                         append_historial(cid, nuevo.get("nombre", ""), "", nuevo.get("estatus", ""), f"Creado por {actor}", action="CLIENTE AGREGADO", actor=actor)
