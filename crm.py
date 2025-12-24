@@ -3233,25 +3233,6 @@ def cargar_prospectos(force_reload: bool = False) -> pd.DataFrame:
                 return df_view
         except Exception:
             pass
-
-    # 2) Fallback a CSV local
-    try:
-        if PROSPECTOS_CSV.exists():
-            df = pd.read_csv(PROSPECTOS_CSV, dtype=str).fillna("")
-            # Convertir a encabezados humanos
-            header_mapping = {internal: human for internal, human in zip(SHEET_INTERNAL_COLUMNS, SHEET_HEADERS)}
-            df_view = df.copy()
-            # Si el CSV usa internos, renombrar a humanos
-            df_view = df_view.rename(columns=header_mapping)
-            # Reordenar a SHEET_HEADERS si existen
-            for h in SHEET_HEADERS:
-                if h not in df_view.columns:
-                    df_view[h] = ""
-            df_view = df_view[[h for h in SHEET_HEADERS if h in df_view.columns]]
-            return df_view
-    except Exception:
-        pass
-
     # 3) Vacío si no hay datos
     return pd.DataFrame(columns=SHEET_HEADERS)
 
