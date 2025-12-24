@@ -2890,7 +2890,7 @@ COLUMNS = [
     "antiguedad_cuenta","asesor",
     "fecha_ingreso","fecha_dispersion",
     "estatus","observaciones","fase",
-    "score","analista"
+    "registro_tipo"
 ]
 # Note: 'producto', 'fuente_base', 'usuario_cipre', and 'contrasena' are
 # already included above in the `COLUMNS` list; do not append duplicates.
@@ -3485,16 +3485,6 @@ def guardar_prospectos(df_rows: pd.DataFrame) -> bool:
         if c not in df_rows.columns:
             df_rows[c] = ""
     df_rows = df_rows[[c for c in COLUMNS if c in df_rows.columns]].fillna("")
-
-    # Respaldo local para no perder datos si falla la conexión
-    try:
-        if PROSPECTOS_CSV.exists():
-            existing = pd.read_csv(PROSPECTOS_CSV, dtype=str).fillna("")
-        else:
-            existing = pd.DataFrame(columns=COLUMNS)
-        pd.concat([existing, df_rows], ignore_index=True).to_csv(PROSPECTOS_CSV, index=False, encoding="utf-8")
-    except Exception:
-        pass
 
     # Intentar sincronizar con Google Sheets (modo append simple)
     if not USE_GSHEETS:
@@ -4714,8 +4704,8 @@ except Exception:
 # Header profesional
 render_professional_header()
 
-tab_dash, tab_cli, tab_docs, tab_import, tab_hist = st.tabs(
-    ["📊 Dashboard", "📋 Clientes", "📎 Documentos", "📥 Importar", "🗂️ Historial"]
+tab_dash, tab_cli, tab_prosp, tab_docs, tab_import, tab_hist = st.tabs(
+    ["📊 Dashboard", "📋 Clientes", "🧲 Prospectos", "📎 Documentos", "📥 Importar", "🗂️ Historial"]
 )
 
 # ===== Dashboard =====
@@ -5935,11 +5925,32 @@ with tab_cli:
             else:
                 st.info("No tienes permiso para eliminar clientes.")
 
+# ===== Prospectos =====
+with tab_prosp:
+    st.subheader("🧲 Prospectos")
+    df_cli = cargar_y_corregir_clientes()
+    if df_cli is None or df_cli.empty:
+        st.info("Sin clientes aún.")
+    else:
+        try:
+            df_prosp = df_cli[df_cli.get("registro_tipo", "").astype(str).str.strip().str.lower() == "prospecto"].copy()
+        except Exception:
+            df_prosp = pd.DataFrame(columns=[c for c in df_cli.columns])
+
+        if df_prosp.empty:
+            st.info("Sin prospectos aún.")
+        else:
+            # Mostrar solo columnas públicas de interés (mismo orden que hoja)
+            cols = [c for c in SHEET_INTERNAL_COLUMNS if c in df_prosp.columns]
+            if not cols:
+                cols = [c for c in df_prosp.columns]
+            st.dataframe(df_prosp[cols], use_container_width=True)
+
 # ===== Documentos (por cliente) =====
 # Safety: garantizar que las pestañas fueron creadas; si no, volver a crearlas para evitar NameError.
-if 'tab_docs' not in globals():
-    tab_dash, tab_cli, tab_docs, tab_import, tab_hist = st.tabs(
-        ["📊 Dashboard", "📋 Clientes", "📎 Documentos", "📥 Importar", "🗂️ Historial"]
+if 'tab_docs' not in globals() or 'tab_prosp' not in globals():
+    tab_dash, tab_cli, tab_prosp, tab_docs, tab_import, tab_hist = st.tabs(
+        ["📊 Dashboard", "📋 Clientes", "🧲 Prospectos", "📎 Documentos", "📥 Importar", "🗂️ Historial"]
     )
 
 with tab_docs:
@@ -6163,7 +6174,7 @@ with tab_import:
     import_cols_required = [
         "nombre","sucursal","asesor","fecha_ingreso","fecha_dispersion",
         "estatus","monto_propuesta","monto_final",
-        "observaciones","score","telefono","correo","analista"
+        "observaciones","telefono","correo"
     ]
     import_cols_optional = ["id", "fuente", "producto"]  # si viene, permite actualizar por ID
 
