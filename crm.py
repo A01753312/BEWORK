@@ -2925,6 +2925,7 @@ SHEET_INTERNAL_COLUMNS = [
     "usuario_cipre",
     "contrasena",
     "asesor",
+    "observaciones",
 ]
 
 SHEET_HEADERS = [
@@ -2954,6 +2955,7 @@ SHEET_HEADERS = [
     "Usuario Cipre",
     "Contraseña",
     "Asesor",
+    "Observaciones",
 ]
 
 def cargar_clientes(force_reload: bool = False) -> pd.DataFrame:
@@ -3583,6 +3585,64 @@ def guardar_prospectos_gsheet_append_simple(df_rows: pd.DataFrame) -> bool:
         if rows:
             ws.append_rows(rows, value_input_option="RAW")
         return True
+    except Exception:
+        return False
+
+def actualizar_prospecto_en_sheet(prospecto: dict) -> bool:
+    """Actualiza una fila existente en la pestaña 'prospecto' de Google Sheets.
+
+    Requiere que 'prospecto' contenga al menos 'id'. Usa SHEET_INTERNAL_COLUMNS
+    y SHEET_HEADERS para la escritura. Devuelve True en éxito.
+    """
+    if not USE_GSHEETS:
+        return False
+    try:
+        ws = _gs_open_worksheet(str(GSHEET_PROSPECTOS_TAB))
+        if ws is None:
+            return False
+
+        # Asegurar encabezados correctos
+        try:
+            header_row = ws.row_values(1)
+            header_norm = [str(h).strip() for h in header_row]
+            if header_norm[:len(SHEET_HEADERS)] != SHEET_HEADERS:
+                ws.update("A1", [SHEET_HEADERS])
+        except Exception:
+            try:
+                ws.update("A1", [SHEET_HEADERS])
+            except Exception:
+                pass
+
+        pid = str(prospecto.get("id", "")).strip()
+        if not pid:
+            return False
+
+        # Buscar la fila por ID en la primera columna (ID (opcional))
+        try:
+            col1 = ws.col_values(1)
+        except Exception:
+            col1 = []
+        row_idx = None
+        for i, val in enumerate(col1, start=1):
+            if i == 1:
+                continue  # skip header
+            if str(val).strip() == pid:
+                row_idx = i
+                break
+        if not row_idx:
+            return False
+
+        # Alinear con columnas internas y construir la fila de salida
+        row_out = []
+        for col in SHEET_INTERNAL_COLUMNS:
+            row_out.append(str(prospecto.get(col, "")))
+
+        # Escribir usando headers humanos desde la columna A
+        try:
+            ws.update(f"A{row_idx}", [row_out])
+            return True
+        except Exception:
+            return False
     except Exception:
         return False
 
@@ -5477,7 +5537,8 @@ with tab_cli:
                             "ref2_parentesco": ref2_parentesco_n.strip(),
                             "antiguedad_cuenta": antiguedad_cuenta_n.strip(),
                             "usuario_cipre": usuario_cipre_n.strip(),
-                            "contrasena": contrasena_n.strip()
+                            "contrasena": contrasena_n.strip(),
+                            "observaciones": obs_n.strip()
                             ,
                             "fase": "fase1"
                         }
@@ -5970,6 +6031,68 @@ with tab_prosp:
         st.info("Sin prospectos en la hoja 'prospecto' aún.")
     else:
         st.dataframe(df_prosp_view, use_container_width=True)
+
+        # --- Editar Prospecto ---
+        try:
+            ids = [str(x).strip() for x in df_prosp_view.get("ID (opcional)", []).tolist() if str(x).strip()]
+        except Exception:
+            ids = []
+        if ids:
+            pid_sel = st.selectbox("Selecciona prospecto a editar (ID)", [""] + ids, format_func=lambda x: "—" if x == "" else x, key="edit_prosp_sel")
+            if pid_sel:
+                # Obtener datos actuales del prospecto
+                try:
+                    cur_row = df_prosp_view[df_prosp_view["ID (opcional)"] == pid_sel].iloc[0]
+                except Exception:
+                    cur_row = pd.Series({})
+
+                # Mapear human->internal
+                header_mapping = {h: internal for h, internal in zip(SHEET_HEADERS, SHEET_INTERNAL_COLUMNS)}
+                cur_int = {}
+                for h, internal in header_mapping.items():
+                    try:
+                        cur_int[internal] = str(cur_row.get(h, ""))
+                    except Exception:
+                        cur_int[internal] = ""
+
+                with st.form(f"form_edit_prosp_{pid_sel}", clear_on_submit=False):
+                    c1, c2 = st.columns(2)
+                    with c1:
+                        nombre_n = st.text_input("Nombre *", value=cur_int.get("nombre", ""))
+                        producto_n = st.selectbox("Producto *", ["MEJORAVIT","INBURSA","MULTIVA"], index=( ["MEJORAVIT","INBURSA","MULTIVA"].index(cur_int.get("producto")) if cur_int.get("producto") in ["MEJORAVIT","INBURSA","MULTIVA"] else 0))
+                        telefono_n = st.text_input("Teléfono", value=cur_int.get("telefono", ""))
+                        sucursal_n = st.selectbox("Sucursal *", SUCURSALES, index=( SUCURSALES.index(cur_int.get("sucursal")) if cur_int.get("sucursal") in SUCURSALES else 0))
+                    with c2:
+                        prod_upper = (producto_n or "").strip().upper()
+                        if prod_upper == "INBURSA":
+                            estatus_choices = ESTATUS_INBURSA_OPCIONES or ESTATUS_OPCIONES
+                        elif prod_upper == "MULTIVA":
+                            estatus_choices = ESTATUS_MULTIVA_OPCIONES or ESTATUS_OPCIONES
+                        elif prod_upper == "MEJORAVIT":
+                            estatus_choices = ESTATUS_MEJORAVIT_OPCIONES or ESTATUS_OPCIONES
+                        else:
+                            estatus_choices = ESTATUS_OPCIONES
+                        estatus_n = st.selectbox("Estatus", estatus_choices, index=(estatus_choices.index(cur_int.get("estatus")) if cur_int.get("estatus") in estatus_choices else 0))
+                        observaciones_n = st.text_area("Observaciones", value=cur_int.get("observaciones", ""))
+
+                    if st.form_submit_button("Guardar cambios prospecto"):
+                        # Construir dict interno
+                        updated = cur_int.copy()
+                        updated.update({
+                            "id": pid_sel,
+                            "nombre": nombre_n.strip(),
+                            "producto": producto_n,
+                            "telefono": telefono_n.strip(),
+                            "sucursal": sucursal_n,
+                            "estatus": estatus_n,
+                            "observaciones": observaciones_n.strip()
+                        })
+                        ok = actualizar_prospecto_en_sheet(updated)
+                        if ok:
+                            st.success("Prospecto actualizado ✅")
+                            do_rerun()
+                        else:
+                            st.warning("No se pudo actualizar el prospecto en Google Sheets.")
 
 # ===== Documentos (por cliente) =====
 # Safety: garantizar que las pestañas fueron creadas; si no, volver a crearlas para evitar NameError.
