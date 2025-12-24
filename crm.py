@@ -5358,7 +5358,7 @@ with tab_prosp:
                 # Primer bloque: Tipo de trámite, Producto, Fuente, Nombre, Teléfono
                 id_n = st.text_input("ID (opcional)", key="form_id")
                 tipo_tramite_n = st.selectbox("Tipo de trámite", ["Compra de deuda", "Renovacion", "Nuevo", "Adicional"], index=2)
-                # producto_n -- definido arriba fuera del form to enable dynamic estatus
+                producto_n = st.selectbox("Producto *", ["MEJORAVIT", "INBURSA", "MULTIVA"], index=0, key="form_producto")
                 fuente_select = st.selectbox("Fuente", ["LUZWARE", "LEADS", "SEGUIMIENTO"], index=1)
                 fuente_base_input = ""
                 if fuente_select == "LUZWARE":
