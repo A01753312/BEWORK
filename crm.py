@@ -3182,7 +3182,7 @@ def cargar_clientes(force_reload: bool = False) -> pd.DataFrame:
 
     return pd.DataFrame(columns=COLUMNS)
 
-def guardar_clientes(df: pd.DataFrame, gsheet_tab: str | None = None):
+def guardar_clientes(df: pd.DataFrame, gsheet_tab: str | None = None, sync_gsheet: bool = True):
     """Guarda la base y actualiza caché"""
     global _CLIENTES_CACHE, _CLIENTES_CACHE_TIME
     
@@ -3223,7 +3223,7 @@ def guardar_clientes(df: pd.DataFrame, gsheet_tab: str | None = None):
         _CLIENTES_CACHE_TIME = time.time()
 
         # Google Sheets (async, sin bloquear)
-        if USE_GSHEETS:
+        if USE_GSHEETS and sync_gsheet:
             try:
                 # Debug: log that we are about to call gsheet append
                 try:
@@ -5348,14 +5348,18 @@ with tab_cli:
                         except Exception:
                             pass
                         # Siempre guardar localmente la base completa
-                        guardar_clientes(base)
-                        # Si es prospecto, además append solo la fila nueva a la pestaña 'prospecto'
-                        try:
-                            if (registro_tipo_n or "").strip().lower() == "prospecto":
+                        # Guardar localmente y enrutar el sync a Sheets según tipo
+                        if (registro_tipo_n or "").strip().lower() == "prospecto":
+                            # No sincronizar la base completa a la hoja principal; solo append la fila nueva a 'prospecto'
+                            guardar_clientes(base, sync_gsheet=False)
+                            try:
                                 df_single = pd.DataFrame([nuevo])
                                 guardar_clientes_gsheet_append(df_single, sheet_tab="prospecto")
-                        except Exception:
-                            pass
+                            except Exception:
+                                pass
+                        else:
+                            # Venta: comportamiento por defecto (sincronizar a la hoja principal)
+                            guardar_clientes(base)
                         # registrar creación en historial
                         actor = (current_user() or {}).get("user") or (current_user() or {}).get("email")
                         append_historial(cid, nuevo.get("nombre", ""), "", nuevo.get("estatus", ""), f"Creado por {actor}", action="CLIENTE AGREGADO", actor=actor)
