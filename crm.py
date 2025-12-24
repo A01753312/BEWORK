@@ -26,7 +26,6 @@ DOCS_DIR = DATA_DIR / "docs"
 DOCS_DIR.mkdir(parents=True, exist_ok=True)
 CLIENTES_CSV = DATA_DIR / "clientes.csv"
 CLIENTES_XLSX = DATA_DIR / "clientes.xlsx"
-PROSPECTOS_CSV = DATA_DIR / "prospecto.csv"
 
 # Inicializar claves en session_state para evitar AttributeError
 if "drive_creds" not in st.session_state:
@@ -3299,6 +3298,21 @@ def guardar_clientes_gsheet_append(df_nuevo: pd.DataFrame, sheet_tab: str | None
 
         _gs_debug(f"Prepared df_sheet columns={list(df_sheet.columns)}")
 
+        # Prospecto: modo APPEND simple y confiable (sin lógica de upsert)
+        try:
+            prospecto_tab = str(GSHEET_PROSPECTOS_TAB).strip().lower() if 'GSHEET_PROSPECTOS_TAB' in globals() else 'prospecto'
+        except Exception:
+            prospecto_tab = 'prospecto'
+        if str(target_tab).strip().lower() == prospecto_tab:
+            try:
+                rows = df_sheet.values.tolist() if hasattr(df_sheet, 'values') else df_sheet.tolist()
+                _gs_debug(f"Prospecto append path: rows={len(rows)}")
+                if rows:
+                    ws.append_rows(rows, value_input_option="RAW")
+            except Exception as e:
+                _gs_debug(f"Prospecto append error: {e}")
+            return
+
         df_actual = _sheet_to_df(ws)
 
         # If the sheet is empty (get_as_dataframe couldn't read rows), avoid blind overwrite.
@@ -3425,19 +3439,7 @@ def guardar_clientes_gsheet_append(df_nuevo: pd.DataFrame, sheet_tab: str | None
                 pass
 
         # 2) Actualizados: enable updates to sync existing rows by ID.
-        # For the 'prospecto' tab, enforce append-only behavior (no updates),
-        # so repeated IDs will create new rows rather than overwriting.
-        try:
-            prospecto_tab = str(GSHEET_PROSPECTOS_TAB).strip().lower() if 'GSHEET_PROSPECTOS_TAB' in globals() else 'prospecto'
-        except Exception:
-            prospecto_tab = 'prospecto'
         DO_UPDATES = True
-        try:
-            if str(target_tab).strip().lower() == prospecto_tab:
-                DO_UPDATES = False
-                _gs_debug("Append-only mode enabled for prospecto tab: skipping updates")
-        except Exception:
-            pass
         comunes_ids = [i for i in idx_nuevo.keys() if i in idx_actual]
         if comunes_ids:
             _gs_debug(f"Detected {len(comunes_ids)} existing ids; DO_UPDATES={DO_UPDATES}")
@@ -3494,12 +3496,49 @@ def guardar_prospectos(df_rows: pd.DataFrame) -> bool:
     except Exception:
         pass
 
-    # Intentar sincronizar con Google Sheets
+    # Intentar sincronizar con Google Sheets (modo append simple)
     if not USE_GSHEETS:
         return False
 
     try:
-        guardar_clientes_gsheet_append(df_rows, sheet_tab=GSHEET_PROSPECTOS_TAB)
+        return guardar_prospectos_gsheet_append_simple(df_rows)
+    except Exception:
+        return False
+
+def guardar_prospectos_gsheet_append_simple(df_rows: pd.DataFrame) -> bool:
+    """Append-only a la pestaña de prospecto en Google Sheets.
+
+    - Asegura encabezados
+    - Reordena columnas al esquema público
+    - Agrega filas con value_input_option RAW
+    """
+    if df_rows is None or df_rows.empty:
+        return False
+    try:
+        ws = _gs_open_worksheet(str(GSHEET_PROSPECTOS_TAB))
+        if ws is None:
+            return False
+        # Preparar columnas al orden público
+        df_rows = _ensure_columns(df_rows.copy(), SHEET_INTERNAL_COLUMNS)
+        df_sheet = df_rows[SHEET_INTERNAL_COLUMNS].copy()
+        df_sheet.columns = SHEET_HEADERS
+
+        # Asegurar encabezado
+        try:
+            header_row = ws.row_values(1)
+            header_norm = [str(h).strip() for h in header_row]
+            if header_norm[:len(SHEET_HEADERS)] != SHEET_HEADERS:
+                ws.update("A1", [SHEET_HEADERS])
+        except Exception:
+            try:
+                ws.update("A1", [SHEET_HEADERS])
+            except Exception:
+                pass
+
+        # Append filas
+        rows = df_sheet.values.tolist() if hasattr(df_sheet, 'values') else df_sheet.tolist()
+        if rows:
+            ws.append_rows(rows, value_input_option="RAW")
         return True
     except Exception:
         return False
