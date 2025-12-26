@@ -116,6 +116,51 @@ if not st.session_state.drive_creds:
     st.sidebar.markdown("---")
     st.sidebar.markdown("### 📂 Conexión a Google Drive")
     st.sidebar.markdown(f"[🔐 Conectar con Google Drive]({auth_url})")
+    # Mostrar pista si el código llegó en la URL pero aún no hay credenciales
+    try:
+        qp = st.query_params
+        if "code" in qp:
+            st.sidebar.info("Procesando autorización de Google… Si no se completa, usa el método manual abajo")
+    except Exception:
+        pass
+
+    # Fallback manual: pegar el código de autorización
+    with st.sidebar.expander("Si no se completa la conexión", expanded=False):
+        manual_code = st.text_input("Código de autorización (parámetro 'code' de la URL)", key="drive_manual_code")
+        if st.button("Usar código", key="btn_use_manual_code"):
+            if not manual_code:
+                st.sidebar.warning("Pega el código de autorización para continuar.")
+            else:
+                try:
+                    client_config = {
+                        "web": {
+                            "client_id": CLIENT_ID,
+                            "client_secret": CLIENT_SECRET,
+                            "redirect_uris": [REDIRECT_URI],
+                            "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+                            "token_uri": "https://oauth2.googleapis.com/token",
+                            "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs"
+                        }
+                    }
+                    flow = Flow.from_client_config(client_config, scopes=SCOPES)
+                    flow.redirect_uri = REDIRECT_URI
+                    flow.fetch_token(code=manual_code)
+                    st.session_state.drive_creds = flow.credentials
+                    st.session_state.processed_auth_code = manual_code
+                    try:
+                        info = json.loads(flow.credentials.to_json())
+                        DATA_DIR.mkdir(parents=True, exist_ok=True)
+                        (DATA_DIR / "drive_creds.json").write_text(json.dumps(info, ensure_ascii=False, indent=2), encoding="utf-8")
+                    except Exception:
+                        pass
+                    try:
+                        st.query_params.clear()
+                    except Exception:
+                        pass
+                    st.sidebar.success("✅ Conexión a Google Drive completada")
+                    st.rerun()
+                except Exception as e:
+                    st.sidebar.error(f"Error usando el código: {e}")
 else:
     st.sidebar.markdown("---")
     st.sidebar.markdown("### 📂 Google Drive")
