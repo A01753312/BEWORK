@@ -1970,6 +1970,24 @@ def load_catalogs_from_gsheet():
 
 # Inicializar catálogos desde disco (con posible actualización desde Google Sheets)
 ESTATUS_OPCIONES = load_estatus()
+# Catálogo de asesores desde Google Sheets (si existe); fallback vacío
+try:
+    ASESORES_OPCIONES = load_catalog_from_gsheet(GSHEET_ASESORES_TAB, [])
+except Exception:
+    ASESORES_OPCIONES = []
+
+# Fallback por ley: asesores oficiales si el catálogo está vacío
+DEFAULT_ASESORES = [
+    "Brenda Cuellar",
+    "Aldo Cuellar",
+    "Karla Garcia",
+    "Martha Garcia",
+    "Jose Juan",
+    "Nancy Valenzuela",
+    "Carlos Atayde",
+]
+if not ASESORES_OPCIONES:
+    ASESORES_OPCIONES = DEFAULT_ASESORES.copy()
 
 # Cargar catálogos específicos por producto (si existen) o usar defaults
 _default_est_Inbursa = [
@@ -4518,8 +4536,13 @@ if is_admin():
         try:
             df_all_cli = cargar_y_corregir_clientes()
             raw_ases = [a for a in df_all_cli.get("asesor", pd.Series([])).fillna("").unique().tolist() if str(a).strip()]
-            asesores_exist = sorted(list(dict.fromkeys([_norm_sin_asesor_label(a) for a in raw_ases])))
-            asesores_choices = list(dict.fromkeys(["(Sin asesor)"] + asesores_exist))
+            asesores_exist = [_norm_sin_asesor_label(a) for a in raw_ases]
+            catalog_ases = [
+                _norm_sin_asesor_label(a) for a in (ASESORES_OPCIONES if 'ASESORES_OPCIONES' in globals() else [])
+                if str(a).strip()
+            ]
+            asesores_choices = list(dict.fromkeys(["(Sin asesor)"] + catalog_ases + asesores_exist))
+            asesores_choices = sorted(asesores_choices)
         except Exception:
             asesores_choices = ["(Sin asesor)"]
 
@@ -4654,8 +4677,23 @@ def _norm_sin_asesor_label(x: str) -> str:
         return "(Sin asesor)"
     return s
 
-# Aplicar normalización y asegurar unicidad
-ASES_ALL = sorted(list(dict.fromkeys([_norm_sin_asesor_label(x) for x in asesor_for_filter.unique().tolist()])))
+# Incorporar catálogo de asesores desde Google Sheets si está disponible
+try:
+    asesores_catalog = [
+        _norm_sin_asesor_label(a)
+        for a in (ASESORES_OPCIONES if 'ASESORES_OPCIONES' in globals() else [])
+        if str(a).strip()
+    ]
+except Exception:
+    asesores_catalog = []
+
+# Unir asesores presentes en la base con el catálogo; asegurar "(Sin asesor)" al inicio
+asesores_union = [
+    _norm_sin_asesor_label(x)
+    for x in asesor_for_filter.unique().tolist()
+]
+asesores_union = list(dict.fromkeys(["(Sin asesor)"] + asesores_catalog + asesores_union))
+ASES_ALL = sorted(asesores_union)
 
 # IMPORTANTE: Aplicar la misma normalización a asesor_for_filter para que coincida con ASES_ALL
 asesor_for_filter_normalized = asesor_for_filter.apply(_norm_sin_asesor_label)
@@ -5551,10 +5589,19 @@ with tab_cli:
                 contrasena_n = st.text_input("Contraseña")
                 fuente_n = str(fuente_select).strip().upper()
                 fuente_base_n = (fuente_base_input or "").strip().upper()
-                # Asesor como último campo
+                # Asesor como último campo (usar catálogo + base)
+                try:
+                    catalog_ases = [
+                        _norm_sin_asesor_label(a) for a in (ASESORES_OPCIONES if 'ASESORES_OPCIONES' in globals() else [])
+                        if str(a).strip()
+                    ]
+                except Exception:
+                    catalog_ases = []
                 raw_ases = [a for a in df_cli["asesor"].fillna("").unique() if str(a).strip()]
-                asesores_exist = sorted(list(dict.fromkeys([_norm_sin_asesor_label(a) for a in raw_ases])))
-                asesores_choices = list(dict.fromkeys(["(Sin asesor)"] + asesores_exist))
+                asesores_exist = [
+                    _norm_sin_asesor_label(a) for a in raw_ases
+                ]
+                asesores_choices = list(dict.fromkeys(["(Sin asesor)"] + catalog_ases + asesores_exist))
                 asesor_select = st.selectbox("Asesor", asesores_choices, key="form_ases_select")
                 if st.session_state.get("form_new_asesor_toggle", False):
                     asesor_n = st.session_state.get("form_nuevo_asesor", "").strip()
