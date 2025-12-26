@@ -82,6 +82,58 @@ try:
 except Exception:
     pass
 
+# Procesar el parámetro de autorización devuelto por Google (ejecutar temprano)
+try:
+    query_params = st.query_params
+except Exception:
+    try:
+        query_params = st.experimental_get_query_params()
+    except Exception:
+        query_params = {}
+if "code" in query_params and not st.session_state.get("drive_creds"):
+    code = query_params["code"]
+    if isinstance(code, (list, tuple)):
+        code = code[0] if code else ""
+    if "processed_auth_code" not in st.session_state or st.session_state.processed_auth_code != code:
+        try:
+            client_config = {
+                "web": {
+                    "client_id": CLIENT_ID,
+                    "client_secret": CLIENT_SECRET,
+                    "redirect_uris": [REDIRECT_URI],
+                    "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+                    "token_uri": "https://oauth2.googleapis.com/token",
+                    "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs"
+                }
+            }
+            flow = Flow.from_client_config(client_config, scopes=SCOPES)
+            flow.redirect_uri = REDIRECT_URI
+            flow.fetch_token(code=code)
+            st.session_state.drive_creds = flow.credentials
+            st.session_state.processed_auth_code = code
+            try:
+                info = json.loads(flow.credentials.to_json())
+                DATA_DIR.mkdir(parents=True, exist_ok=True)
+                (DATA_DIR / "drive_creds.json").write_text(json.dumps(info, ensure_ascii=False, indent=2), encoding="utf-8")
+            except Exception:
+                pass
+            # Limpiar el código de la URL de inmediato
+            try:
+                st.query_params.clear()
+            except Exception:
+                pass
+            # Feedback breve y refresco de UI
+            if f"shown_drive_auth" not in st.session_state:
+                st.success("✅ Autenticación exitosa con Google Drive")
+                st.session_state[f"shown_drive_auth"] = True
+            st.rerun()
+        except Exception:
+            try:
+                st.query_params.clear()
+            except Exception:
+                pass
+            st.session_state.processed_auth_code = None
+
 # Mostrar botón de conexión si aún no se ha autenticado
 # Helper: verificar si hay credenciales válidas de Drive (y refrescarlas si es posible)
 def drive_connected() -> bool:
@@ -295,6 +347,7 @@ if "error" in query_params:
     error = query_params["error"]
     # Quitar mensaje molesto: st.sidebar.error(f"❌ Error de autorización: {error}")
     st.query_params.clear()
+# (Bloque duplicado de procesamiento OAuth removido; ahora se realiza arriba para evitar estados transitorios de UI)
 # CSS personalizado para look profesional con tema claro BEWORK
 st.markdown("""
 <style>
@@ -4299,9 +4352,13 @@ def guardar_usuarios_gsheet(users_data: dict):
         return
         
     try:
+        # Verificar credenciales de Sheets antes de abrir worksheet
+        if _gs_credentials() is None:
+            # Sin credenciales de Sheets, omitir guardado silenciosamente
+            return
         ws = _gs_open_worksheet(GSHEET_USERSTAB)
         if ws is None:
-            st.error("No se pudo abrir la pestaña de usuarios en Google Sheets")
+            # Si no se puede abrir la hoja (p.ej., falta de permisos), omitir sin ruido
             return
             
         # Preparar datos para guardar
@@ -4473,11 +4530,20 @@ def maybe_migrate_users_to_gsheet():
         # Verificar si ya hay usuarios en Google Sheets
         gsheet_data = cargar_usuarios_gsheet()
         if not gsheet_data.get("users"):
-            # No hay usuarios en GS, migrar desde local
+            # No hay usuarios en GS, intentar migrar desde local si hay credenciales
+            if _gs_credentials() is None:
+                # Sin credenciales configuradas para Sheets, no mostrar mensajes
+                return
             local_data = load_users()
             if local_data.get("users"):
                 guardar_usuarios_gsheet(local_data)
-                st.sidebar.success("✅ Usuarios migrados a Google Sheets")
+                # Confirmar migración leyendo nuevamente
+                confirm = cargar_usuarios_gsheet(force_reload=True)
+                if confirm.get("users"):
+                    st.sidebar.success("✅ Usuarios migrados a Google Sheets")
+                else:
+                    # No emitir error ruidoso; sólo un aviso discreto
+                    st.sidebar.info("ℹ️ Usuarios locales disponibles; configura credenciales de Sheets para migrarlos")
     except Exception as e:
         st.sidebar.warning(f"⚠️ Error migrando usuarios: {e}")
 
