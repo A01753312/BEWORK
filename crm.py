@@ -6061,7 +6061,25 @@ with tab_prosp:
         except Exception:
             ids = []
         if ids:
-            pid_sel = st.selectbox("Selecciona prospecto a editar (ID)", [""] + ids, format_func=lambda x: "—" if x == "" else x, key="edit_prosp_sel")
+            # Mostrar en el selector el "ID - Nombre" del prospecto
+            def _fmt_prosp_id(x: str) -> str:
+                try:
+                    if not x:
+                        return "—"
+                    row = df_prosp_view[df_prosp_view["ID (opcional)"] == x]
+                    if not row.empty:
+                        nombre = str(row.iloc[0].get("Nombre *", "")).strip()
+                        return f"{x} - {nombre}" if nombre else str(x)
+                except Exception:
+                    pass
+                return str(x)
+
+            pid_sel = st.selectbox(
+                "Selecciona prospecto a editar (ID - Nombre)",
+                [""] + ids,
+                format_func=_fmt_prosp_id,
+                key="edit_prosp_sel",
+            )
             if pid_sel:
                 # Obtener datos actuales del prospecto
                 try:
