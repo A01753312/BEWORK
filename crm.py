@@ -41,6 +41,7 @@ from google_auth_oauthlib.flow import Flow
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseUpload
 import json
+import io
 from google.oauth2.credentials import Credentials as GoogleUserCredentials
 from google.auth.transport.requests import Request
 
@@ -54,89 +55,55 @@ SCOPES = [
     "https://www.googleapis.com/auth/drive.metadata.readonly"
 ]
 
-# Cargar credenciales guardadas en disco si existen (con logging)
-def _log_debug(msg: str):
+# Helper: construir URL de autorización de Drive (reutilizable en formularios)
+def build_drive_auth_url() -> str:
     try:
-        p = DATA_DIR / "gs_debug.log"
-        p.parent.mkdir(parents=True, exist_ok=True)
-        with open(p, "a", encoding="utf-8") as fh:
-            fh.write(f"{datetime.now().isoformat()} - {msg}\n")
+        return (
+            "https://accounts.google.com/o/oauth2/v2/auth"
+            f"?response_type=code&client_id={CLIENT_ID}"
+            f"&redirect_uri={REDIRECT_URI}"
+            f"&scope=https://www.googleapis.com/auth/drive.file%20https://www.googleapis.com/auth/drive.metadata.readonly"
+            f"&access_type=offline&prompt=consent"
+        )
     except Exception:
-        pass
+        return "https://accounts.google.com/o/oauth2/v2/auth"
 
+# Cargar credenciales guardadas en disco si existen (sin logging)
 try:
     _creds_path = DATA_DIR / "drive_creds.json"
     if st.session_state.get("drive_creds") is None and _creds_path.exists():
+        info = json.loads(_creds_path.read_text(encoding="utf-8"))
+        st.session_state.drive_creds = GoogleUserCredentials.from_authorized_user_info(info, scopes=SCOPES)
         try:
-            info = json.loads(_creds_path.read_text(encoding="utf-8"))
-            st.session_state.drive_creds = GoogleUserCredentials.from_authorized_user_info(info, scopes=SCOPES)
-            _log_debug("Loaded drive credentials from disk")
-            # intentar refrescar si expiradas
-            try:
-                if getattr(st.session_state.drive_creds, 'expired', False) and getattr(st.session_state.drive_creds, 'refresh_token', None):
-                    st.session_state.drive_creds.refresh(Request())
-                    _log_debug("Refreshed persisted credentials successfully")
-            except Exception as e:
-                _log_debug(f"Error refreshing persisted creds: {repr(e)}")
-        except Exception as e:
-            _log_debug(f"Failed to load persisted drive creds: {repr(e)}")
+            if getattr(st.session_state.drive_creds, 'expired', False) and getattr(st.session_state.drive_creds, 'refresh_token', None):
+                st.session_state.drive_creds.refresh(Request())
+        except Exception:
+            pass
 except Exception:
     pass
 
 # Mostrar botón de conexión si aún no se ha autenticado
 # Helper: verificar si hay credenciales válidas de Drive (y refrescarlas si es posible)
 def drive_connected() -> bool:
-    """Verifica si las credenciales de Drive están operativas.
-    Intenta refrescar si es necesario y realiza una llamada mínima a la API para validar.
-    Registra resultados en `data/gs_debug.log` para diagnóstico.
-    """
+    """Verifica si las credenciales de Drive están operativas: refresca si es necesario y prueba una llamada mínima a la API."""
     creds = st.session_state.get('drive_creds')
-    def _log(msg: str):
-        try:
-            p = DATA_DIR / "gs_debug.log"
-            p.parent.mkdir(parents=True, exist_ok=True)
-            with open(p, "a", encoding="utf-8") as fh:
-                fh.write(f"{datetime.now().isoformat()} - {msg}\n")
-        except Exception:
-            pass
-
     if not creds:
-        _log("drive_connected: no creds in session_state")
         return False
-
-    # Intentar refrescar si el objeto lo requiere y tiene refresh_token
     try:
         if getattr(creds, 'expired', False) and getattr(creds, 'refresh_token', None):
-            try:
-                creds.refresh(Request())
-                st.session_state['drive_creds'] = creds
-                _log("drive_connected: refreshed credentials successfully")
-            except Exception as e:
-                _log(f"drive_connected: refresh failed: {repr(e)}")
-                return False
-    except Exception as e:
-        _log(f"drive_connected: checking expiry failed: {repr(e)}")
-
-    # Probar una llamada mínima a Drive
+            creds.refresh(Request())
+            st.session_state['drive_creds'] = creds
+    except Exception:
+        return False
     try:
         svc = build("drive", "v3", credentials=st.session_state['drive_creds'])
         svc.files().list(pageSize=1, fields="files(id)").execute()
-        _log("drive_connected: drive API call OK")
         return True
-    except Exception as e:
-        _log(f"drive_connected: drive API call failed: {repr(e)}")
+    except Exception:
         return False
 
 if not st.session_state.drive_creds:
-    # Construir URL de autorización manualmente con scopes correctos
-    scope_string = "%20".join([scope.replace("https://www.googleapis.com/auth/", "") for scope in SCOPES])
-    auth_url = (
-        "https://accounts.google.com/o/oauth2/v2/auth"
-        f"?response_type=code&client_id={CLIENT_ID}"
-        f"&redirect_uri={REDIRECT_URI}"
-        f"&scope=https://www.googleapis.com/auth/drive.file%20https://www.googleapis.com/auth/drive.metadata.readonly"
-        f"&access_type=offline&prompt=consent"
-    )
+    auth_url = build_drive_auth_url()
     st.sidebar.markdown("---")
     st.sidebar.markdown("### 📂 Conexión a Google Drive")
     st.sidebar.markdown(f"[🔐 Conectar con Google Drive]({auth_url})")
@@ -240,23 +207,7 @@ else:
                 if st.button("Limpiar", key="btn_clear_drive_root"):
                     set_drive_root_id("")
                     st.info("Configuración de carpeta raíz eliminada. Se usará el nombre por defecto.")
-        # Opción manual para probar la conexión real a la API sin bloquear la UI
-        if st.sidebar.button("🔎 Probar conexión", key="btn_test_drive"):
-            ok = False
-            try:
-                ok = drive_connected()
-            except Exception as e:
-                try:
-                    p = DATA_DIR / "gs_debug.log"
-                    with open(p, "a", encoding="utf-8") as fh:
-                        fh.write(f"{datetime.now().isoformat()} - manual_test_error: {repr(e)}\n")
-                except Exception:
-                    pass
-                ok = False
-            if ok:
-                st.sidebar.success("Prueba de conexión: OK")
-            else:
-                st.sidebar.error("Prueba de conexión: Falló (ver data/gs_debug.log)")
+        # (Se eliminó el botón de prueba de conexión para simplificar la UI)
     else:
         st.sidebar.error("⚠️ No hay credenciales de Drive. Conecta para activar uploads")
     
@@ -320,19 +271,8 @@ if "code" in query_params and not st.session_state.drive_creds:
                 info = json.loads(flow.credentials.to_json())
                 DATA_DIR.mkdir(parents=True, exist_ok=True)
                 (DATA_DIR / "drive_creds.json").write_text(json.dumps(info, ensure_ascii=False, indent=2), encoding="utf-8")
-                try:
-                    p = DATA_DIR / "gs_debug.log"
-                    with open(p, "a", encoding="utf-8") as fh:
-                        fh.write(f"{datetime.now().isoformat()} - OAuth: fetched token and saved creds to disk\n")
-                except Exception:
-                    pass
-            except Exception as e:
-                try:
-                    p = DATA_DIR / "gs_debug.log"
-                    with open(p, "a", encoding="utf-8") as fh:
-                        fh.write(f"{datetime.now().isoformat()} - OAuth: error saving creds: {repr(e)}\n")
-                except Exception:
-                    pass
+            except Exception:
+                pass
             
             # Limpiar el código de la URL para evitar reprocessing
             st.query_params.clear()
@@ -2360,9 +2300,7 @@ def canonicalize_from_catalog(
 
     return s
 
-
-from googleapiclient.http import MediaIoBaseUpload
-import io
+    
 
 def crear_carpeta_cliente_drive(cliente_id, cliente_nombre=""):
     """Crea o encuentra la carpeta del cliente en Google Drive."""
@@ -5750,7 +5688,10 @@ with tab_cli:
                 )
             with col_storage2:
                 if st.session_state.get('drive_creds') is None:
-                    st.info("💡 Conecta Google Drive en el sidebar para activar esta opción")
+                    try:
+                        st.info(f"💡 Conecta Google Drive en el sidebar: [🔐 Abrir enlace de conexión]({build_drive_auth_url()})")
+                    except Exception:
+                        st.info("💡 Conecta Google Drive en el sidebar para activar esta opción")
                 else:
                     st.success("✅ Google Drive conectado")
 
@@ -5858,6 +5799,10 @@ with tab_cli:
                             # Si el usuario marcó Drive pero no hay credenciales, avisar y desactivar
                             if usar_google_drive and st.session_state.get('drive_creds') is None:
                                 st.warning("Has marcado 'Guardar en Google Drive' pero no hay conexión activa. Los archivos se guardarán localmente.")
+                                try:
+                                    st.info(f"[🔐 Conectar con Google Drive]({build_drive_auth_url()}) para habilitar subidas")
+                                except Exception:
+                                    pass
                                 usar_google_drive = False
                             for rid, fobj in (files_map or {}).items():
                                 if fobj:
@@ -6486,6 +6431,10 @@ with tab_docs:
                         # Si el usuario marcó Drive pero no hay credenciales, avisar y desactivar
                         if usar_google_drive_e and st.session_state.get('drive_creds') is None:
                             st.warning("Has marcado 'Guardar en Google Drive' pero no hay conexión activa. Los archivos se guardarán localmente.")
+                            try:
+                                st.info(f"[🔐 Conectar con Google Drive]({build_drive_auth_url()}) para habilitar subidas")
+                            except Exception:
+                                pass
                             usar_google_drive_e = False
                         for rid, fobj in (uploaded_map or {}).items():
                             if fobj:
