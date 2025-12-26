@@ -154,6 +154,20 @@ if not st.session_state.drive_creds:
                 st.rerun()
             except Exception as e:
                 st.sidebar.error(f"Error completando autorización: {e}")
+                try:
+                    if "invalid_client" in str(e).lower():
+                        st.sidebar.warning("Causas comunes: client_id/secret incorrectos, o REDIRECT_URI no autorizado en Google Cloud")
+                        st.sidebar.caption(f"REDIRECT_URI actual: {REDIRECT_URI}")
+                        st.sidebar.caption("Asegúralo en Google Cloud → APIs & Services → Credentials → tu OAuth client → Authorized redirect URIs")
+                    # Opción para limpiar la URL y reintentar
+                    if st.sidebar.button("Limpiar código y reintentar", key="btn_clear_code_retry"):
+                        try:
+                            st.query_params.clear()
+                        except Exception:
+                            pass
+                        st.rerun()
+                except Exception:
+                    pass
     except Exception:
         pass
 
