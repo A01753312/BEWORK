@@ -4171,7 +4171,9 @@ def cargar_usuarios_gsheet(force_reload: bool = False) -> dict:
                     "user": row.get("user", ""),
                     "role": row.get("role", "member"),
                     "salt": row.get("salt", ""),
-                    "hash": row.get("hash", "")
+                    "hash": row.get("hash", ""),
+                    # optional mapping: member assigned to an asesor
+                    "asesor": row.get("asesor", "")
                 }
                 # Solo agregar usuarios válidos
                 if user_data["user"] and user_data["salt"] and user_data["hash"]:
@@ -4217,8 +4219,8 @@ def guardar_usuarios_gsheet(users_data: dict):
         # Crear DataFrame
         df = pd.DataFrame(users_list)
         
-        # Asegurar columnas en orden correcto
-        column_order = ["user", "role", "salt", "hash"]
+        # Asegurar columnas en orden correcto (incluye asesor opcional)
+        column_order = ["user", "role", "salt", "hash", "asesor"]
         for col in column_order:
             if col not in df.columns:
                 df[col] = ""
@@ -4298,7 +4300,8 @@ def add_user(username: str, password: str, role: str = "member") -> tuple[bool, 
     if any((u.get("user","") or u.get("email","" )).lower() == lower_uname for u in data.get("users", [])):
         return False, "Ese usuario ya existe."
     salt_hex, hash_hex = _hash_pw_pbkdf2(password)
-    data["users"].append({"user": uname, "role": role, "salt": salt_hex, "hash": hash_hex})
+    # default without asesor assignment
+    data["users"].append({"user": uname, "role": role, "salt": salt_hex, "hash": hash_hex, "asesor": ""})
     save_users(data)
     # Limpiar caché para forzar recarga
     limpiar_cache_usuarios()
@@ -4431,8 +4434,21 @@ if not current_user():
         st.stop()
 
 # Sidebar: info + logout + admin panel
-u = current_user()
-st.sidebar.markdown(f"**Usuario:** {u.get('user') or u.get('email')} — _{u['role']}_")
+u = current_user() or {}
+_uname = u.get('user') or u.get('email')
+_role = u.get('role') or ""
+_asesor_assigned = ""
+try:
+    if _role == "member":
+        udata = get_user(_uname or "")
+        _asesor_assigned = (udata or {}).get("asesor", "").strip()
+except Exception:
+    pass
+
+_hdr = f"**Usuario:** {_uname} — _{_role}_"
+if _role == "member" and _asesor_assigned:
+    _hdr += f" · Asesor: {_asesor_assigned}"
+st.sidebar.markdown(_hdr)
 if st.sidebar.button("Cerrar sesión"):
     st.session_state["auth_user"] = None
     # Limpiar filtros y campos de login/alta para evitar que queden visibles
@@ -4490,6 +4506,57 @@ if is_admin():
                     st.success("Usuarios sincronizados desde Google Sheets")
                     # Forzar rerun para recargar usuarios
                     do_rerun()
+
+    # Asignar asesor a miembro
+    with st.sidebar.expander("👥 Asignar asesor a miembro", expanded=False):
+        try:
+            users_data = load_users()
+            miembros = [u.get("user") or u.get("email") for u in users_data.get("users", []) if (u.get("role") == "member")]
+        except Exception:
+            miembros = []
+        # Obtener asesores desde la base de clientes
+        try:
+            df_all_cli = cargar_y_corregir_clientes()
+            raw_ases = [a for a in df_all_cli.get("asesor", pd.Series([])).fillna("").unique().tolist() if str(a).strip()]
+            asesores_exist = sorted(list(dict.fromkeys([_norm_sin_asesor_label(a) for a in raw_ases])))
+            asesores_choices = list(dict.fromkeys(["(Sin asesor)"] + asesores_exist))
+        except Exception:
+            asesores_choices = ["(Sin asesor)"]
+
+        if not miembros:
+            st.info("No hay miembros para asignar.")
+        else:
+            miembro_sel = st.selectbox("Miembro", miembros, index=0, key="assign_member_sel")
+            asesor_sel = st.selectbox("Asesor", asesores_choices, index=0, key="assign_member_asesor")
+            cols_am1, cols_am2 = st.columns(2)
+            with cols_am1:
+                if st.button("Guardar asignación", key="btn_save_assignment"):
+                    try:
+                        data = load_users()
+                        for u in data.get("users", []):
+                            uname = u.get("user") or u.get("email")
+                            if uname == miembro_sel:
+                                u["asesor"] = "" if asesor_sel == "(Sin asesor)" else asesor_sel
+                                break
+                        save_users(data)
+                        limpiar_cache_usuarios()
+                        st.success("Asignación guardada ✅")
+                    except Exception:
+                        st.warning("No se pudo guardar la asignación.")
+            with cols_am2:
+                if st.button("Quitar asignación", key="btn_clear_assignment"):
+                    try:
+                        data = load_users()
+                        for u in data.get("users", []):
+                            uname = u.get("user") or u.get("email")
+                            if uname == miembro_sel:
+                                u["asesor"] = ""
+                                break
+                        save_users(data)
+                        limpiar_cache_usuarios()
+                        st.success("Asignación eliminada ✅")
+                    except Exception:
+                        st.warning("No se pudo eliminar la asignación.")
 
     show_users = st.sidebar.checkbox("Mostrar usuarios registrados", value=False, key="admin_show_users")
     if show_users:
@@ -4558,6 +4625,16 @@ st.sidebar.caption("Filtros")
 
 # Cargar datos frescos para el sidebar
 df_cli = cargar_y_corregir_clientes()
+# Restricción por asesor asignado (miembro): limitar la vista a su asesor
+try:
+    cu = current_user() or {}
+    if cu.get("role") == "member":
+        udata = get_user(cu.get("user") or cu.get("email") or "")
+        assigned = (udata or {}).get("asesor", "").strip()
+        if assigned:
+            df_cli = df_cli[df_cli["asesor"].fillna("").str.strip().str.casefold() == assigned.casefold()].copy()
+except Exception:
+    pass
 
 # Opciones base
 SUC_LABEL_EMPTY = "(Sin sucursal)"
@@ -4848,6 +4925,16 @@ tab_dash, tab_cli, tab_prosp, tab_docs, tab_import, tab_hist = st.tabs(
 with tab_dash:
     # Cargar datos frescos para el dashboard
     df_cli = cargar_y_corregir_clientes()
+    # Restricción por asesor asignado (miembro): limitar la vista a su asesor
+    try:
+        cu = current_user() or {}
+        if cu.get("role") == "member":
+            udata = get_user(cu.get("user") or cu.get("email") or "")
+            assigned = (udata or {}).get("asesor", "").strip()
+            if assigned:
+                df_cli = df_cli[df_cli["asesor"].fillna("").str.strip().str.casefold() == assigned.casefold()].copy()
+    except Exception:
+        pass
     
     if df_cli.empty:
         st.info("Sin clientes aún.")
@@ -6050,6 +6137,16 @@ with tab_cli:
 with tab_prosp:
     st.subheader("🧲 Prospectos")
     df_prosp_view = cargar_prospectos()
+    # Restricción por asesor asignado (miembro): limitar prospectos al asesor asignado
+    try:
+        cu = current_user() or {}
+        if cu.get("role") == "member":
+            udata = get_user(cu.get("user") or cu.get("email") or "")
+            assigned = (udata or {}).get("asesor", "").strip()
+            if assigned and ("Asesor" in df_prosp_view.columns):
+                df_prosp_view = df_prosp_view[df_prosp_view["Asesor"].fillna("").str.strip().str.casefold() == assigned.casefold()].copy()
+    except Exception:
+        pass
     if df_prosp_view.empty:
         st.info("Sin prospectos en la hoja 'prospecto' aún.")
     else:
@@ -6146,6 +6243,16 @@ with tab_docs:
     st.subheader("📎 Documentos por cliente")
     # Cargar datos frescos para la pestaña de documentos
     df_cli = cargar_y_corregir_clientes()
+    # Restricción por asesor asignado (miembro)
+    try:
+        cu = current_user() or {}
+        if cu.get("role") == "member":
+            udata = get_user(cu.get("user") or cu.get("email") or "")
+            assigned = (udata or {}).get("asesor", "").strip()
+            if assigned:
+                df_cli = df_cli[df_cli["asesor"].fillna("").str.strip().str.casefold() == assigned.casefold()].copy()
+    except Exception:
+        pass
     if df_cli.empty:
         st.info("No hay clientes aún.")
     else:
