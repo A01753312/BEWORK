@@ -1989,6 +1989,37 @@ DEFAULT_ASESORES = [
 if not ASESORES_OPCIONES:
     ASESORES_OPCIONES = DEFAULT_ASESORES.copy()
 
+# Helper: normalizar etiqueta de asesor (unificar '(Sin asesor)')
+def _normalize_asesor_label(x: str) -> str:
+    try:
+        s = (x or "").strip()
+    except Exception:
+        s = ""
+    if s.casefold() == "(sin asesor)":
+        return "(Sin asesor)"
+    return s
+
+# Helper: catálogo consolidado de asesores (GS + base), con '(Sin asesor)'
+def get_asesores_catalog() -> list[str]:
+    try:
+        # desde GS/catalog
+        catalog_ases = [
+            _normalize_asesor_label(a)
+            for a in (ASESORES_OPCIONES if 'ASESORES_OPCIONES' in globals() else [])
+            if str(a).strip()
+        ]
+    except Exception:
+        catalog_ases = []
+    # desde base de clientes
+    try:
+        df_all_cli = cargar_y_corregir_clientes()
+        raw_ases = [a for a in df_all_cli.get("asesor", pd.Series([])).fillna("").unique().tolist() if str(a).strip()]
+        ases_base = [_normalize_asesor_label(a) for a in raw_ases]
+    except Exception:
+        ases_base = []
+    union = list(dict.fromkeys(["(Sin asesor)"] + catalog_ases + ases_base))
+    return sorted(union)
+
 # Cargar catálogos específicos por producto (si existen) o usar defaults
 _default_est_Inbursa = [
     "Tramite cargado",
@@ -4534,15 +4565,7 @@ if is_admin():
             miembros = []
         # Obtener asesores desde la base de clientes
         try:
-            df_all_cli = cargar_y_corregir_clientes()
-            raw_ases = [a for a in df_all_cli.get("asesor", pd.Series([])).fillna("").unique().tolist() if str(a).strip()]
-            asesores_exist = [_norm_sin_asesor_label(a) for a in raw_ases]
-            catalog_ases = [
-                _norm_sin_asesor_label(a) for a in (ASESORES_OPCIONES if 'ASESORES_OPCIONES' in globals() else [])
-                if str(a).strip()
-            ]
-            asesores_choices = list(dict.fromkeys(["(Sin asesor)"] + catalog_ases + asesores_exist))
-            asesores_choices = sorted(asesores_choices)
+            asesores_choices = get_asesores_catalog()
         except Exception:
             asesores_choices = ["(Sin asesor)"]
 
@@ -5591,17 +5614,9 @@ with tab_cli:
                 fuente_base_n = (fuente_base_input or "").strip().upper()
                 # Asesor como último campo (usar catálogo + base)
                 try:
-                    catalog_ases = [
-                        _norm_sin_asesor_label(a) for a in (ASESORES_OPCIONES if 'ASESORES_OPCIONES' in globals() else [])
-                        if str(a).strip()
-                    ]
+                    asesores_choices = get_asesores_catalog()
                 except Exception:
-                    catalog_ases = []
-                raw_ases = [a for a in df_cli["asesor"].fillna("").unique() if str(a).strip()]
-                asesores_exist = [
-                    _norm_sin_asesor_label(a) for a in raw_ases
-                ]
-                asesores_choices = list(dict.fromkeys(["(Sin asesor)"] + catalog_ases + asesores_exist))
+                    asesores_choices = ["(Sin asesor)"]
                 asesor_select = st.selectbox("Asesor", asesores_choices, key="form_ases_select")
                 if st.session_state.get("form_new_asesor_toggle", False):
                     asesor_n = st.session_state.get("form_nuevo_asesor", "").strip()
