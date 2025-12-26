@@ -149,7 +149,97 @@ else:
     has_creds = bool(st.session_state.get('drive_creds'))
     if has_creds:
         st.sidebar.success("✅ Conectado a Google Drive (credenciales presentes)")
-        st.sidebar.caption("Carpeta objetivo: CRM BEWORKK")
+        # Helpers para carpeta raíz configurable
+        def _get_drive_root_id_from_disk() -> str | None:
+            try:
+                p = DATA_DIR / "drive_root_folder_id.txt"
+                if p.exists():
+                    v = p.read_text(encoding="utf-8").strip()
+                    return v or None
+            except Exception:
+                pass
+            return None
+
+        def _save_drive_root_id_to_disk(fid: str) -> None:
+            try:
+                p = DATA_DIR / "drive_root_folder_id.txt"
+                p.write_text(str(fid).strip(), encoding="utf-8")
+            except Exception:
+                pass
+
+        def get_drive_root_id() -> str | None:
+            # Prioridad: session_state -> archivo local -> secrets
+            v = st.session_state.get('drive_root_folder_id')
+            if v:
+                return v
+            try:
+                sec = st.secrets.get("DRIVE_ROOT_FOLDER_ID")  # type: ignore[attr-defined]
+            except Exception:
+                sec = None
+            disk = _get_drive_root_id_from_disk()
+            return v or disk or sec
+
+        def set_drive_root_id(fid: str):
+            fid = (fid or "").strip()
+            st.session_state['drive_root_folder_id'] = fid
+            _save_drive_root_id_to_disk(fid)
+
+        def parse_folder_id(s: str) -> str | None:
+            s = (s or "").strip()
+            if not s:
+                return None
+            if "drive.google.com" in s and "/folders/" in s:
+                try:
+                    part = s.split("/folders/", 1)[1]
+                    part = part.split("?", 1)[0]
+                    return part
+                except Exception:
+                    return None
+            # Si parece un ID (letras/números/guiones/underscore de longitud razonable)
+            if len(s) >= 10 and len(s) <= 200:
+                return s
+            return None
+
+        def get_drive_root_label() -> str:
+            try:
+                fid = get_drive_root_id()
+                if not fid:
+                    return "CRM BEWORKK"
+                svc = build("drive", "v3", credentials=st.session_state['drive_creds'])
+                meta = svc.files().get(fileId=fid, fields="id,name,mimeType").execute()
+                if meta and meta.get("mimeType") == "application/vnd.google-apps.folder":
+                    return meta.get("name") or fid
+                return fid
+            except Exception:
+                fid = get_drive_root_id()
+                return fid or "CRM BEWORKK"
+
+        st.sidebar.caption(f"Carpeta objetivo: {get_drive_root_label()}")
+        # UI para configurar carpeta raíz con un enlace o ID
+        with st.sidebar.expander("Configurar carpeta raíz", expanded=False):
+            inp = st.text_input("Pega enlace o ID de carpeta", value="", key="drive_root_input")
+            col_gr1, col_gr2 = st.columns([1,1])
+            with col_gr1:
+                if st.button("Guardar carpeta", key="btn_save_drive_root"):
+                    fid = parse_folder_id(st.session_state.get("drive_root_input", ""))
+                    if not fid:
+                        st.warning("No pude reconocer el ID de carpeta.")
+                    else:
+                        # Validar que exista y sea carpeta
+                        try:
+                            svc = build("drive", "v3", credentials=st.session_state['drive_creds'])
+                            meta = svc.files().get(fileId=fid, fields="id,name,mimeType").execute()
+                            if meta and meta.get("mimeType") == "application/vnd.google-apps.folder":
+                                set_drive_root_id(fid)
+                                st.success(f"Carpeta configurada: {meta.get('name')}")
+                            else:
+                                st.warning("El ID proporcionado no corresponde a una carpeta de Drive.")
+                        except Exception as e:
+                            st.warning("No fue posible validar el acceso a la carpeta.")
+            with col_gr2:
+                if st.button("Limpiar", key="btn_clear_drive_root"):
+                    set_drive_root_id("")
+                    st.info("Configuración de carpeta raíz eliminada. Se usará el nombre por defecto.")
         # Opción manual para probar la conexión real a la API sin bloquear la UI
         if st.sidebar.button("🔎 Probar conexión", key="btn_test_drive"):
             ok = False
@@ -2280,21 +2370,42 @@ def crear_carpeta_cliente_drive(cliente_id, cliente_nombre=""):
         return None
     
     drive_service = build("drive", "v3", credentials=st.session_state.drive_creds)
-    
-    # Buscar carpeta principal "CRM BEWORKK"
-    query = "name='CRM BEWORKK' and mimeType='application/vnd.google-apps.folder' and trashed=false"
-    results = drive_service.files().list(q=query, fields="files(id, name)").execute()
-    
-    if not results.get('files'):
-        # Crear carpeta principal
-        folder_metadata = {
-            'name': 'CRM BEWORKK',
-            'mimeType': 'application/vnd.google-apps.folder'
-        }
-        main_folder = drive_service.files().create(body=folder_metadata, fields='id').execute()
-        main_folder_id = main_folder.get('id')
-    else:
-        main_folder_id = results['files'][0]['id']
+
+    # Resolver carpeta raíz: usar ID configurado si existe; si no, buscar/crear por nombre
+    def _get_drive_root_id_configured() -> str | None:
+        try:
+            # reutiliza helper definido en el panel de Drive si existe
+            if 'drive_root_folder_id' in st.session_state and st.session_state['drive_root_folder_id']:
+                return st.session_state['drive_root_folder_id']
+        except Exception:
+            pass
+        try:
+            p = DATA_DIR / "drive_root_folder_id.txt"
+            if p.exists():
+                v = p.read_text(encoding="utf-8").strip()
+                return v or None
+        except Exception:
+            pass
+        try:
+            return st.secrets.get("DRIVE_ROOT_FOLDER_ID")  # type: ignore[attr-defined]
+        except Exception:
+            return None
+
+    main_folder_id = _get_drive_root_id_configured()
+    if not main_folder_id:
+        # Buscar carpeta principal por nombre por defecto
+        query = "name='CRM BEWORKK' and mimeType='application/vnd.google-apps.folder' and trashed=false"
+        results = drive_service.files().list(q=query, fields="files(id, name)").execute()
+        if not results.get('files'):
+            # Crear carpeta principal
+            folder_metadata = {
+                'name': 'CRM BEWORKK',
+                'mimeType': 'application/vnd.google-apps.folder'
+            }
+            main_folder = drive_service.files().create(body=folder_metadata, fields='id').execute()
+            main_folder_id = main_folder.get('id')
+        else:
+            main_folder_id = results['files'][0]['id']
     
     # Buscar carpeta del cliente - usar solo el nombre (sin ID)
     if cliente_nombre:
@@ -5641,7 +5752,7 @@ with tab_cli:
                 if st.session_state.get('drive_creds') is None:
                     st.info("💡 Conecta Google Drive en el sidebar para activar esta opción")
                 else:
-                    st.success("✅ Google Drive conectado (carpeta: CRM BEWORKK)")
+                    st.success("✅ Google Drive conectado")
 
             # Mostrar uploaders de fase1 según producto seleccionado (en el form de alta)
             prod_upper = (producto_n or "").strip().upper()
@@ -6349,7 +6460,7 @@ with tab_docs:
                 if st.session_state.get('drive_creds') is None:
                     st.info("💡 Conecta Google Drive en el sidebar para activar esta opción")
                 else:
-                    st.success("✅ Google Drive conectado (carpeta: CRM BEWORKK)")
+                    st.success("✅ Google Drive conectado")
             
             # Formulario de subida dinámico según producto y fase
             form_key = f"form_subir_docs_{cid_sel}"
