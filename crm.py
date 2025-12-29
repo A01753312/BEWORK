@@ -3121,16 +3121,18 @@ def cargar_clientes(force_reload: bool = False) -> pd.DataFrame:
                 if records:
                     df = pd.DataFrame(records).astype(str).fillna("")
                     # Mostrar mensaje solo al iniciar sesión
-                    # (Aviso de carga desde Google Sheets eliminado por solicitud)
-                    pass
+                    if 'gs_first_load' not in st.session_state:
+                        st.session_state['gs_first_load'] = True
+                        show_once_success("gsheets_load", f"Datos cargados desde Google Sheets: {len(df)} registros")
                 else:
                     # Intentar lectura via gspread_dataframe como fallback
                     df = get_as_dataframe(ws, evaluate_formulas=True, dtype=str, header=0).dropna(how="all")
                     if df is None or df.empty:
                         df = pd.DataFrame(columns=COLUMNS)
                     else:
-                        # (Aviso de carga desde Google Sheets eliminado por solicitud)
-                        pass
+                        if 'gs_first_load' not in st.session_state:
+                            st.session_state['gs_first_load'] = True
+                            show_once_success("gsheets_load", f"Datos cargados desde Google Sheets: {len(df)} registros")
             except Exception:
                 # Fallback estricto a get_as_dataframe si get_all_records falla
                 try:
@@ -3138,8 +3140,9 @@ def cargar_clientes(force_reload: bool = False) -> pd.DataFrame:
                     if df is None or df.empty:
                         df = pd.DataFrame(columns=COLUMNS)
                     else:
-                        # (Aviso de carga desde Google Sheets eliminado por solicitud)
-                        pass
+                        if 'gs_first_load' not in st.session_state:
+                            st.session_state['gs_first_load'] = True
+                            show_once_success("gsheets_load", f"Datos cargados desde Google Sheets: {len(df)} registros")
                 except Exception:
                     df = pd.DataFrame(columns=COLUMNS)
 
@@ -4955,7 +4958,9 @@ st.sidebar.subheader("📊 Resumen filtrado")
 st.sidebar.metric("Clientes visibles", len(df_ver))
 st.sidebar.metric("Total en base", len(df_cli))
 
-# (Se eliminaron mensajes informativos para miembros sobre opciones de descarga.)
+"""
+Ocultar opciones de descarga de Excel para usuarios con rol 'member'.
+"""
 if is_admin():
     # Añadir botón para descargar Excel del resumen filtrado (df_ver)
     try:
