@@ -5649,13 +5649,16 @@ with tab_dash:
 with tab_cli:
     st.subheader("🆕 Alta de clientes")
 
+    # Selección de producto fuera del form para que el cambio dispare rerun inmediato
+    producto_sel = st.selectbox("Producto *", ["MEJORAVIT", "INBURSA", "MULTIVA"], index=0, key="form_producto")
+    prod_upper = (producto_sel or "").strip().upper()
+
     with st.form("form_alta_cliente", clear_on_submit=True):
             c1, c2, c3 = st.columns(3)
             with c1:
                 # Primer bloque: Tipo de trámite, Producto, Fuente, Nombre, Teléfono
                 id_n = st.text_input("ID (opcional)", key="form_id")
                 tipo_tramite_n = st.selectbox("Tipo de trámite", ["Compra de deuda", "Renovacion", "Nuevo", "Adicional"], index=2)
-                producto_n = st.selectbox("Producto *", ["MEJORAVIT", "INBURSA", "MULTIVA"], index=0, key="form_producto")
                 fuente_select = st.selectbox("Fuente", ["LUZWARE", "LEADS", "SEGUIMIENTO"], index=1)
                 fuente_base_input = ""
                 if fuente_select == "LUZWARE":
@@ -5673,7 +5676,6 @@ with tab_cli:
                 plazo_n = st.selectbox("Plazo (meses)", [12,24,36,28,54,60], index=0)
                 estado_civil_n = st.selectbox("Estado civil", ["Casado","Soltero","Viudo","Divorciado"], index=1)
                 # Mostrar estatus según producto seleccionado
-                prod_upper = (producto_n or "").strip().upper()
                 if prod_upper == "INBURSA":
                     estatus_choices = ESTATUS_INBURSA_OPCIONES or ESTATUS_OPCIONES
                 elif prod_upper == "MULTIVA":
@@ -5738,7 +5740,7 @@ with tab_cli:
                     st.success("✅ Google Drive conectado")
 
             # Mostrar uploaders de fase1 según producto seleccionado (en el form de alta)
-            prod_upper = (producto_n or "").strip().upper()
+            prod_upper = (producto_sel or "").strip().upper()
             fase1_reqs = PRODUCT_DOCS.get(prod_upper, {}).get("fase1", [])
             files_map = {}
             if fase1_reqs:
@@ -5779,7 +5781,7 @@ with tab_cli:
                             "id": cid,
                             "nombre": nombre_n.strip(),
                             "sucursal": sucursal_n,
-                            "producto": producto_n,
+                            "producto": producto_sel,
                             "asesor": asesor_final,
                             "fecha_ingreso": str(fecha_ingreso_n),
                             "estatus": estatus_n,
@@ -5864,7 +5866,7 @@ with tab_cli:
 
                         # Auto-avanzar fase si se completaron los requisitos de la fase1 (creación)
                         try:
-                            adv, new_phase = _advance_client_phase_if_complete(cid, producto_n, "fase1")
+                            adv, new_phase = _advance_client_phase_if_complete(cid, producto_sel, "fase1")
                             if adv:
                                 st.info(f"Fase actualizada automáticamente a {new_phase}")
                         except Exception:
