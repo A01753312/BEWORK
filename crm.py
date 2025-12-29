@@ -2122,7 +2122,7 @@ _default_est_Mejoravit = [
     "Pendiente Acuse",
     "Pendiente autorizacion",
     "Pendiente firma",
-    "Pendiente Dispersión",
+    "Pendiente dispesion",
     "Credito autorizado",
     "Rechazado",
     "En pausa por algun tramite",
