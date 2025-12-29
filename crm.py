@@ -4647,6 +4647,42 @@ if is_admin():
                     # Forzar rerun para recargar usuarios
                     do_rerun()
 
+    # Crear nuevo asesor (admin only)
+    with st.sidebar.expander("➕ Crear asesor", expanded=False):
+        with st.form("add_asesor_form", clear_on_submit=True):
+            st.caption("Crear nuevo asesor (se agregará a Google Sheets)")
+            new_asesor = st.text_input("Nombre del asesor", key="new_asesor_name")
+            submitted_asesor = st.form_submit_button("Crear asesor")
+
+        if submitted_asesor:
+            if not new_asesor or not str(new_asesor).strip():
+                st.toast("Nombre de asesor vacío.", icon="🚫")
+            else:
+                try:
+                    name = str(new_asesor).strip()
+                    # Actualizar catálogo en memoria
+                    try:
+                        existing = ASESORES_OPCIONES if 'ASESORES_OPCIONES' in globals() and ASESORES_OPCIONES else []
+                    except Exception:
+                        existing = []
+                    # Evitar duplicados (normalizando)
+                    normalized_existing = [ _normalize_asesor_label(x) for x in existing ]
+                    if _normalize_asesor_label(name) in normalized_existing:
+                        st.toast("El asesor ya existe en el catálogo.", icon="ℹ️")
+                    else:
+                        existing.append(name)
+                        ASESORES_OPCIONES = sorted(list(dict.fromkeys(existing)))
+                        # Sincronizar con Google Sheets y limpiar cachés para que se refleje inmediatamente
+                        try:
+                            sync_catalog_to_gsheet("asesores", ASESORES_OPCIONES, GSHEET_ASESORES_TAB)
+                            limpiar_cache_gsheets()
+                            st.success("Asesor creado y sincronizado a Google Sheets ✅")
+                            do_rerun()
+                        except Exception:
+                            st.warning("Asesor agregado localmente, pero no se pudo sincronizar con Google Sheets.")
+                except Exception:
+                    st.warning("No se pudo crear el asesor.")
+
     # Asignar asesor a miembro
     with st.sidebar.expander("👥 Asignar asesor a miembro", expanded=False):
         try:
