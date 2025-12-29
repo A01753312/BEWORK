@@ -4958,112 +4958,116 @@ st.sidebar.subheader("📊 Resumen filtrado")
 st.sidebar.metric("Clientes visibles", len(df_ver))
 st.sidebar.metric("Total en base", len(df_cli))
 
-# Añadir botón para descargar Excel del resumen filtrado (df_ver)
-try:
-    bio = io.BytesIO()
-    engine = None
+"""
+Ocultar opciones de descarga de Excel para usuarios con rol 'member'.
+"""
+if is_admin():
+    # Añadir botón para descargar Excel del resumen filtrado (df_ver)
     try:
-        import xlsxwriter  # type: ignore
-        engine = "xlsxwriter"
-    except Exception:
+        bio = io.BytesIO()
+        engine = None
         try:
-            import openpyxl  # type: ignore
-            engine = "openpyxl"
+            import xlsxwriter  # type: ignore
+            engine = "xlsxwriter"
         except Exception:
-            engine = None
-
-    if engine is None:
-        st.sidebar.info("Instala 'openpyxl' o 'xlsxwriter' para habilitar descarga XLSX.")
-    else:
-        # Preparar DataFrame a exportar (ordenado por fechas si procede)
-        try:
-            df_export = sort_df_by_dates(df_ver) if (isinstance(df_ver, pd.DataFrame) and not df_ver.empty) else df_ver.copy()
-        except Exception:
-            df_export = df_ver.copy() if isinstance(df_ver, pd.DataFrame) else pd.DataFrame()
-
-        with pd.ExcelWriter(bio, engine=engine) as writer:
             try:
-                df_export.to_excel(writer, index=False, sheet_name="Filtrados")
+                import openpyxl  # type: ignore
+                engine = "openpyxl"
             except Exception:
-                # fallback: intentar convertir todo a strings y volver a escribir
+                engine = None
+
+        if engine is None:
+            st.sidebar.info("Instala 'openpyxl' o 'xlsxwriter' para habilitar descarga XLSX.")
+        else:
+            # Preparar DataFrame a exportar (ordenado por fechas si procede)
+            try:
+                df_export = sort_df_by_dates(df_ver) if (isinstance(df_ver, pd.DataFrame) and not df_ver.empty) else df_ver.copy()
+            except Exception:
+                df_export = df_ver.copy() if isinstance(df_ver, pd.DataFrame) else pd.DataFrame()
+
+            with pd.ExcelWriter(bio, engine=engine) as writer:
                 try:
-                    df_export.astype(str).to_excel(writer, index=False, sheet_name="Filtrados")
+                    df_export.to_excel(writer, index=False, sheet_name="Filtrados")
                 except Exception:
-                    pass
-        bio.seek(0)
-        if st.sidebar.download_button(
-            "⬇️ Descargar Excel (filtrados)",
-            data=bio.getvalue(),
-            file_name="clientes_filtrados.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            key="dl_filtrados_sidebar"
-        ):
+                    # fallback: intentar convertir todo a strings y volver a escribir
+                    try:
+                        df_export.astype(str).to_excel(writer, index=False, sheet_name="Filtrados")
+                    except Exception:
+                        pass
+            bio.seek(0)
+            if st.sidebar.download_button(
+                "⬇️ Descargar Excel (filtrados)",
+                data=bio.getvalue(),
+                file_name="clientes_filtrados.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                key="dl_filtrados_sidebar"
+            ):
+                try:
+                    actor = (current_user() or {}).get("user") or (current_user() or {}).get("email")
+                    append_historial(
+                    "", "", "", "", "", "",
+                    "Descarga de Excel filtrados",
+                    action="DESCARGA ZIP",  # o "DOCUMENTOS", según quieras categorizarlo
+                    actor=actor
+                    )
+                except Exception:
+                        pass
+            
+            # NUEVO: Descarga Excel por pestañas de asesores
+            bio_asesores = io.BytesIO()
             try:
-                actor = (current_user() or {}).get("user") or (current_user() or {}).get("email")
-                append_historial(
-                "", "", "", "", "", "",
-                "Descarga de Excel filtrados",
-                action="DESCARGA ZIP",  # o "DOCUMENTOS", según quieras categorizarlo
-                actor=actor
-                )
-            except Exception:
-                    pass
-        
-        # NUEVO: Descarga Excel por pestañas de asesores
-        bio_asesores = io.BytesIO()
-        try:
-            # Preparar datos por asesor
-            df_for_asesores = df_export.copy()
-            if not df_for_asesores.empty and 'asesor' in df_for_asesores.columns:
-                # Normalizar asesores vacíos
-                df_for_asesores['asesor'] = df_for_asesores['asesor'].fillna("(Sin asesor)").replace({"": "(Sin asesor)"})
-                
-                # Obtener lista de asesores únicos
-                asesores_unicos = sorted(df_for_asesores['asesor'].unique().tolist())
-                
-                if len(asesores_unicos) > 0:
-                    with pd.ExcelWriter(bio_asesores, engine=engine) as writer:
-                        # Crear una pestaña por cada asesor
-                        for asesor in asesores_unicos:
-                            try:
-                                # Filtrar datos por asesor
-                                df_asesor = df_for_asesores[df_for_asesores['asesor'] == asesor].copy()
-                                if not df_asesor.empty:
-                                    # Limpiar nombre del asesor para usar como nombre de pestaña (máximo 31 caracteres)
-                                    sheet_name = str(asesor)[:31] if asesor else "Sin_asesor"
-                                    # Reemplazar caracteres problemáticos para nombres de pestaña
-                                    sheet_name = sheet_name.replace("/", "_").replace("\\", "_").replace("*", "_").replace("?", "_").replace(":", "_").replace("[", "_").replace("]", "_")
-                                    
-                                    df_asesor.to_excel(writer, index=False, sheet_name=sheet_name)
-                            except Exception:
-                                # Si falla crear la pestaña, continúa con el siguiente asesor
-                                continue
+                # Preparar datos por asesor
+                df_for_asesores = df_export.copy()
+                if not df_for_asesores.empty and 'asesor' in df_for_asesores.columns:
+                    # Normalizar asesores vacíos
+                    df_for_asesores['asesor'] = df_for_asesores['asesor'].fillna("(Sin asesor)").replace({"": "(Sin asesor)"})
                     
-                    bio_asesores.seek(0)
-                    if st.sidebar.download_button(
-                        "📊 Descargar Excel (por asesores)",
-                        data=bio_asesores.getvalue(),
-                        file_name="clientes_por_asesores.xlsx",
-                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                        key="dl_asesores_sidebar",
-                        help="Descarga Excel con una pestaña por cada asesor"
-                    ):
-                        try:
-                            actor = (current_user() or {}).get("user") or (current_user() or {}).get("email")
-                            append_historial(
-                            "", "", "", "", "", "",
-                            "Descarga de Excel por asesores",
-                            action="DESCARGA ZIP ASESOR",
-                            actor=actor
-                            )
-                        except Exception:
-                            pass
-        except Exception:
-            # Si algo falla en la creación del Excel por asesores, no mostrar el botón
-            pass
-except Exception:
-    # no bloquear la UI si algo falla
-    pass
+                    # Obtener lista de asesores únicos
+                    asesores_unicos = sorted(df_for_asesores['asesor'].unique().tolist())
+                    
+                    if len(asesores_unicos) > 0:
+                        with pd.ExcelWriter(bio_asesores, engine=engine) as writer:
+                            # Crear una pestaña por cada asesor
+                            for asesor in asesores_unicos:
+                                try:
+                                    # Filtrar datos por asesor
+                                    df_asesor = df_for_asesores[df_for_asesores['asesor'] == asesor].copy()
+                                    if not df_asesor.empty:
+                                        # Limpiar nombre del asesor para usar como nombre de pestaña (máximo 31 caracteres)
+                                        sheet_name = str(asesor)[:31] if asesor else "Sin_asesor"
+                                        # Reemplazar caracteres problemáticos para nombres de pestaña
+                                        sheet_name = sheet_name.replace("/", "_").replace("\\", "_").replace("*", "_").replace("?", "_").replace(":", "_").replace("[", "_").replace("]", "_")
+                                        
+                                        df_asesor.to_excel(writer, index=False, sheet_name=sheet_name)
+                                except Exception:
+                                    # Si falla crear la pestaña, continúa con el siguiente asesor
+                                    continue
+                        
+                        bio_asesores.seek(0)
+                        if st.sidebar.download_button(
+                            "📊 Descargar Excel (por asesores)",
+                            data=bio_asesores.getvalue(),
+                            file_name="clientes_por_asesores.xlsx",
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                            key="dl_asesores_sidebar",
+                            help="Descarga Excel con una pestaña por cada asesor"
+                        ):
+                            try:
+                                actor = (current_user() or {}).get("user") or (current_user() or {}).get("email")
+                                append_historial(
+                                "", "", "", "", "", "",
+                                "Descarga de Excel por asesores",
+                                action="DESCARGA ZIP ASESOR",
+                                actor=actor
+                                )
+                            except Exception:
+                                pass
+            except Exception:
+                # Si algo falla en la creación del Excel por asesores, no mostrar el botón
+                pass
+    except Exception:
+        # no bloquear la UI si algo falla
+        pass
 
 # ---------- Main UI con pestañas ----------  # NEW
 # Header profesional
