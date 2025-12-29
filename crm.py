@@ -5652,6 +5652,26 @@ with tab_cli:
     # Selección de producto fuera del form para que el cambio dispare rerun inmediato
     producto_sel = st.selectbox("Producto *", ["MEJORAVIT", "INBURSA", "MULTIVA"], index=0, key="form_producto")
     prod_upper = (producto_sel or "").strip().upper()
+    # Forzar rerun una vez cuando el producto cambie para que los widgets dependientes (estatus)
+    # se reconstruyan correctamente en la misma ejecución.
+    try:
+        # Evitar forzar rerun cuando no estamos en un contexto de ejecución de Streamlit
+        is_streamlit_ctx = False
+        try:
+            from streamlit.runtime.scriptrunner import get_script_run_ctx  # type: ignore
+            is_streamlit_ctx = get_script_run_ctx() is not None
+        except Exception:
+            is_streamlit_ctx = False
+
+        if st.session_state.get("last_product_for_form") != producto_sel:
+            st.session_state["last_product_for_form"] = producto_sel
+            if is_streamlit_ctx:
+                try:
+                    do_rerun()
+                except Exception:
+                    pass
+    except Exception:
+        pass
 
     with st.form("form_alta_cliente", clear_on_submit=True):
             c1, c2, c3 = st.columns(3)
