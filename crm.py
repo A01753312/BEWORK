@@ -4957,10 +4957,6 @@ st.sidebar.markdown("---")
 st.sidebar.subheader("📊 Resumen filtrado")
 st.sidebar.metric("Clientes visibles", len(df_ver))
 st.sidebar.metric("Total en base", len(df_cli))
-
-"""
-Ocultar opciones de descarga de Excel para usuarios con rol 'member'.
-"""
 if is_admin():
     # Añadir botón para descargar Excel del resumen filtrado (df_ver)
     try:
