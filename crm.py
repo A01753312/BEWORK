@@ -6370,7 +6370,14 @@ with tab_prosp:
                             estatus_choices = ESTATUS_MEJORAVIT_OPCIONES or ESTATUS_OPCIONES
                         else:
                             estatus_choices = ESTATUS_OPCIONES
-                        estatus_n = st.selectbox("Estatus", estatus_choices, index=(estatus_choices.index(cur_int.get("estatus")) if cur_int.get("estatus") in estatus_choices else 0))
+                        # Use a widget key that depends on product and prospect ID to force recreation on product change
+                        estatus_key = f"edit_prosp_estatus_{pid_sel}_{prod_upper}"
+                        estatus_n = st.selectbox(
+                            "Estatus",
+                            estatus_choices,
+                            index=(estatus_choices.index(cur_int.get("estatus")) if cur_int.get("estatus") in estatus_choices else 0),
+                            key=estatus_key
+                        )
                         observaciones_n = st.text_area("Observaciones", value=cur_int.get("observaciones", ""))
 
                     if st.form_submit_button("Guardar cambios prospecto"):
