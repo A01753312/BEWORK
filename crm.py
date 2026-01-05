@@ -5303,8 +5303,8 @@ with tab_dash:
         analisis_financiero = calcular_analisis_financiero(df_for_analysis)
 
         # Mostrar total de presupuesto general (informativo)
-        # Siempre mostrar la suma de la columna 'Monto Solicitado' del DataFrame filtrado por producto
-        total_presupuesto = calcular_analisis_financiero(df_dash)['total_propuesto']
+        # Mostrar la suma de 'Monto Solicitado' del DataFrame filtrado por producto y por rango de fechas seleccionado
+        total_presupuesto = calcular_analisis_financiero(df_for_analysis)['total_propuesto']
         st.markdown(f"**Total Presupuesto General: ${total_presupuesto:,.2f}**")
 
         if not analisis_financiero['montos_por_estatus'].empty:
