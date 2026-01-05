@@ -901,14 +901,19 @@ def calcular_analisis_financiero(df: pd.DataFrame) -> dict:
     df_temp = df.copy()
     df_temp['monto_propuesta_num'] = df_temp['monto_propuesta'].apply(limpiar_monto)
     df_temp['monto_final_num'] = df_temp['monto_final'].apply(limpiar_monto)
+    # Normalizar estatus para efectos de dispersión (no modificar el estatus real)
+    try:
+        df_temp['_estatus_para_dispersion'] = df_temp['estatus'].fillna("").apply(lambda s: _maybe_convert_to_dispersado(s))
+    except Exception:
+        df_temp['_estatus_para_dispersion'] = df_temp['estatus'].fillna("")
     
     # Calcular métricas
     total_propuesto = df_temp['monto_propuesta_num'].sum()
-    total_dispersado = df_temp[df_temp['estatus'] == 'DISPERSADO']['monto_final_num'].sum()
+    total_dispersado = df_temp[df_temp['_estatus_para_dispersion'] == 'DISPERSADO']['monto_final_num'].sum()
     
     # Promedios
     promedio_propuesto = df_temp['monto_propuesta_num'].mean() if len(df_temp) > 0 else 0
-    dispersados_df = df_temp[df_temp['estatus'] == 'DISPERSADO']
+    dispersados_df = df_temp[df_temp['_estatus_para_dispersion'] == 'DISPERSADO']
     promedio_dispersado = dispersados_df['monto_final_num'].mean() if len(dispersados_df) > 0 else 0
     
     # Efectividad de conversión
@@ -928,7 +933,7 @@ def calcular_analisis_financiero(df: pd.DataFrame) -> dict:
         'tasa_conversion_financiera': tasa_conversion_financiera,
         'montos_por_estatus': montos_por_estatus,
         'clientes_con_monto': len(df_temp[df_temp['monto_propuesta_num'] > 0]),
-        'dispersados_con_monto': len(df_temp[(df_temp['estatus'] == 'DISPERSADO') & (df_temp['monto_final_num'] > 0)])
+        'dispersados_con_monto': len(df_temp[(df_temp['_estatus_para_dispersion'] == 'DISPERSADO') & (df_temp['monto_final_num'] > 0)])
     }
 
 def formatear_monto(monto: float) -> str:
@@ -995,7 +1000,11 @@ def generar_presentacion_dashboard(df_cli: pd.DataFrame) -> bytes:
     total_clientes = len(df_cli)
     estatus_counts = df_cli["estatus"].fillna("").value_counts()
     
-    dispersados = estatus_counts.get("DISPERSADO", 0)
+    # Contar como dispersados también los estatus que mapean a DISPERSADO
+    dispersados = sum([
+        count for estatus, count in estatus_counts.items()
+        if _maybe_convert_to_dispersado(estatus) == "DISPERSADO"
+    ])
     rechazados = sum([
         count for estatus, count in estatus_counts.items() 
         if estatus and (estatus.startswith("RECH") or estatus.startswith("REC"))
@@ -5190,7 +5199,11 @@ with tab_dash:
         estatus_counts = df_dash["estatus"].fillna("").value_counts()
 
         # Calcular KPIs principales con lógica corregida
-        dispersados = estatus_counts.get("DISPERSADO", 0)
+        # Contar como dispersados también los estatus que mapean a DISPERSADO
+        dispersados = sum([
+            count for estatus, count in estatus_counts.items()
+            if _maybe_convert_to_dispersado(estatus) == "DISPERSADO"
+        ])
 
         # Clasificar automáticamente todos los estatus que empiecen con "RECH" como rechazados
         rechazados = sum([
