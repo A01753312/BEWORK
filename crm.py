@@ -2934,6 +2934,22 @@ def _is_dispersion(estatus: str) -> bool:
     e = _norm_key(estatus)
     return e in {_norm_key("DISPERSADO"), _norm_key("EN DISPERSIÓN"), _norm_key("EN DISPERSION")}
 
+
+def _maybe_convert_to_dispersado(estatus: str) -> str:
+    """Si el estatus indica que el crédito fue autorizado/ganado, mapear a 'DISPERSADO'.
+    Mantiene el estatus original en cualquier otro caso.
+    """
+    try:
+        if not estatus:
+            return estatus or ""
+        key = _norm_key(estatus)
+        triggers = {_norm_key("Credito autorizado"), _norm_key("Crédito autorizado"), _norm_key("Ganada")}
+        if key in triggers:
+            return "DISPERSADO"
+    except Exception:
+        pass
+    return estatus or ""
+
 # === Helper: multiselección con estética de selectbox ===
 # ...existing code...
 def selectbox_multi(label: str, options: list[str], state_key: str) -> list[str]:
@@ -5852,7 +5868,7 @@ with tab_cli:
                             "producto": producto_sel,
                             "asesor": asesor_final,
                             "fecha_ingreso": str(fecha_ingreso_n),
-                            "estatus": estatus_n,
+                            "estatus": _maybe_convert_to_dispersado(estatus_n),
                             # Monto solicitado se guarda en 'monto_propuesta' para compatibilidad
                             "monto_propuesta": str(monto_solicitado_n).strip(),
                             "telefono": telefono_n.strip(),
@@ -6229,7 +6245,7 @@ with tab_cli:
                             base.at[cid_quick, "sucursal"] = sucursal_n
                             base.at[cid_quick, "telefono"] = telefono_n.strip()
                             base.at[cid_quick, "fecha_ingreso"] = str(fecha_ingreso_n)
-                            base.at[cid_quick, "estatus"] = estatus_n
+                            base.at[cid_quick, "estatus"] = _maybe_convert_to_dispersado(estatus_n)
                             base.at[cid_quick, "capacidad"] = capacidad_n
                             base.at[cid_quick, "monto_propuesta"] = str(monto_solicitado_n).strip()
                             base.at[cid_quick, "plazo"] = str(plazo_n)
@@ -6292,7 +6308,10 @@ with tab_cli:
                     for k in COLUMNS:
                         if k == "id":
                             continue
-                        base.at[cid, k] = str(row.get(k, ""))
+                        val = str(row.get(k, ""))
+                        if k == "estatus":
+                            val = _maybe_convert_to_dispersado(val)
+                        base.at[cid, k] = val
                 # NORMALIZAR/UNIFICAR asesores en el dataframe antes de guardar
                 for idx in base.index:
                     base.at[idx, "asesor"] = find_matching_asesor(base.at[idx, "asesor"], base.reset_index())
