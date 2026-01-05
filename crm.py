@@ -4856,22 +4856,34 @@ fuente_for_filter = df_cli["fuente"].fillna("").replace({"": "(Sin fuente)"})
 FUENTE_ALL = sorted(list(dict.fromkeys([ (str(x).strip() if str(x).strip() else "(Sin fuente)") for x in fuente_for_filter.unique().tolist() ])))
 
 # Controles “tipo selectbox” pero multi
-f_suc  = selectbox_multi("Sucursales", SUC_ALL,  "f_suc")
-f_ases = selectbox_multi("Asesores",   ASES_ALL, "f_ases")
-# (Filtro de 'Estatus' eliminado por solicitud)
-# NEW: añadir filtro de Fuente en el sidebar
-f_fuente = selectbox_multi("Fuente", FUENTE_ALL, "f_fuente")
-
-# NEW: filtro por Producto en el sidebar (single select con 'Todos')
-try:
-    producto_for_filter = df_cli.get("producto", df_cli.get("Producto", pd.Series(""))).fillna("")
-    PRODUCTOS_ALL = ["Todos"] + sorted(list(dict.fromkeys([str(x).strip().upper() for x in producto_for_filter.unique() if str(x).strip()])))
-    # Guardar en session para persistencia y compatibilidad
+# Para usuarios con rol 'member' ocultamos los controles y forzamos valores por defecto
+cu = current_user() or {}
+if cu.get("role") == "member":
+    st.sidebar.info("Filtros ocultos para miembros")
+    # establecer selecciones por defecto que equivalen a "sin filtrar" para evitar excepciones
+    f_suc = SUC_ALL.copy()
+    f_ases = ASES_ALL.copy()
+    f_fuente = FUENTE_ALL.copy()
+    # Producto: mantener/crear llave en session_state y usar 'Todos'
     st.session_state.setdefault("f_producto", "Todos")
-    f_producto = st.sidebar.selectbox("Producto", PRODUCTOS_ALL, index=PRODUCTOS_ALL.index(st.session_state.get("f_producto", "Todos")))
-    st.session_state["f_producto"] = f_producto
-except Exception:
-    f_producto = "Todos"
+    f_producto = st.session_state.get("f_producto", "Todos")
+else:
+    f_suc  = selectbox_multi("Sucursales", SUC_ALL,  "f_suc")
+    f_ases = selectbox_multi("Asesores",   ASES_ALL, "f_ases")
+    # (Filtro de 'Estatus' eliminado por solicitud)
+    # NEW: añadir filtro de Fuente en el sidebar
+    f_fuente = selectbox_multi("Fuente", FUENTE_ALL, "f_fuente")
+
+    # NEW: filtro por Producto en el sidebar (single select con 'Todos')
+    try:
+        producto_for_filter = df_cli.get("producto", df_cli.get("Producto", pd.Series(""))).fillna("")
+        PRODUCTOS_ALL = ["Todos"] + sorted(list(dict.fromkeys([str(x).strip().upper() for x in producto_for_filter.unique() if str(x).strip()])))
+        # Guardar en session para persistencia y compatibilidad
+        st.session_state.setdefault("f_producto", "Todos")
+        f_producto = st.sidebar.selectbox("Producto", PRODUCTOS_ALL, index=PRODUCTOS_ALL.index(st.session_state.get("f_producto", "Todos")))
+        st.session_state["f_producto"] = f_producto
+    except Exception:
+        f_producto = "Todos"
 
 # Validar consistencia de datos automáticamente (método seguro)
 if f_ases:
