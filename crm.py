@@ -5261,13 +5261,13 @@ with tab_dash:
         # 💹 Top Estatus — Total Vendido
         st.markdown("##### 💹 Top Estatus — Total Vendido")
 
-        # Permitir filtrar el ranking por rango de fechas de dispersión
+        # Filtrar el ranking por rango de fechas de ingreso (solo `fecha_ingreso`)
         try:
-            fecha_disp_series = parse_dates_flexible(df_dash.get('fecha_dispersion', pd.Series([])))
-            valid_dates = fecha_disp_series.dropna()
-            if not valid_dates.empty:
-                min_dt = valid_dates.min().date()
-                max_dt = valid_dates.max().date()
+            parsed_ing = parse_dates_flexible(df_dash.get('fecha_ingreso', pd.Series([""] * len(df_dash))))
+            valid_ing = parsed_ing.dropna()
+            if not valid_ing.empty:
+                min_dt = valid_ing.min().date()
+                max_dt = valid_ing.max().date()
             else:
                 min_dt = date.today()
                 max_dt = date.today()
@@ -5275,7 +5275,7 @@ with tab_dash:
             min_dt = date.today()
             max_dt = date.today()
 
-        fecha_range = st.date_input("Filtrar por fecha de dispersión", value=(min_dt, max_dt), key="dashboard_dispersion_range")
+        fecha_range = st.date_input("Filtrar por fecha de ingreso", value=(min_dt, max_dt), key="dashboard_ingreso_range")
 
         # Normalizar a tupla start/end
         try:
@@ -5288,9 +5288,9 @@ with tab_dash:
             start_d = min_dt
             end_d = max_dt
 
-        # Aplicar filtro (si hay fechas válidas) sin mutar df_dash original
+        # Aplicar filtro usando `fecha_ingreso` solamente
         try:
-            parsed = parse_dates_flexible(df_dash.get('fecha_dispersion', pd.Series([""] * len(df_dash))))
+            parsed = parsed_ing
             if parsed.notna().any():
                 mask = (parsed.dt.date >= start_d) & (parsed.dt.date <= end_d)
                 df_for_analysis = df_dash[mask.fillna(False)].copy()
