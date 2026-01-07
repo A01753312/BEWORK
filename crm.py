@@ -1014,6 +1014,47 @@ def parse_comments_to_month_buckets(text: str, default_year: int | None = None) 
     return buckets
 
 
+def aggregate_prospects_to_months(df_view: pd.DataFrame) -> dict:
+    """Toma un DataFrame de prospectos (con encabezados humanos) y agrega montos/descuentos por mes.
+
+    Devuelve un dict { 'YYYY-MM': { 'total_monto': float, 'total_descuento': float, 'count': int, 'cats': [floats], 'entries': [entry_dicts] } }
+    """
+    from collections import defaultdict
+    agg = defaultdict(lambda: {'total_monto': 0.0, 'total_descuento': 0.0, 'count': 0, 'cats': [], 'entries': []})
+    if df_view is None or df_view.empty:
+        return {}
+
+    # Nombre de la columna humana para observaciones
+    obs_col = SHEET_HEADERS[-1] if SHEET_HEADERS else 'Observaciones'
+
+    for _, row in df_view.iterrows():
+        text = str(row.get(obs_col, '') or '')
+        buckets = parse_comments_to_month_buckets(text)
+        for key, entries in buckets.items():
+            for e in entries:
+                try:
+                    monto = float(e.get('monto')) if e.get('monto') is not None else 0.0
+                except Exception:
+                    monto = 0.0
+                try:
+                    desc = float(e.get('descuento')) if e.get('descuento') is not None else 0.0
+                except Exception:
+                    desc = 0.0
+                cat = e.get('cat')
+                agg[key]['total_monto'] += monto
+                agg[key]['total_descuento'] += desc
+                agg[key]['count'] += 1
+                if cat is not None:
+                    try:
+                        agg[key]['cats'].append(float(cat))
+                    except Exception:
+                        pass
+                agg[key]['entries'].append(e)
+
+    # Convert defaultdict to normal dict
+    return {k: v for k, v in agg.items()}
+
+
 def generar_presentacion_dashboard(df_cli: pd.DataFrame) -> bytes:
     """Genera una presentación PowerPoint completa del dashboard con gráficas"""
     from pptx import Presentation
@@ -3453,6 +3494,15 @@ def cargar_prospectos(force_reload: bool = False) -> pd.DataFrame:
                 # Preparar DF de visualización con encabezados humanos
                 df_view = df_int.copy()
                 df_view.columns = SHEET_HEADERS
+                try:
+                    # Agregar buckets mensuales parseando las observaciones y guardar en session_state
+                    agg = aggregate_prospects_to_months(df_view)
+                    try:
+                        st.session_state['prospect_month_buckets'] = agg
+                    except Exception:
+                        pass
+                except Exception:
+                    pass
                 return df_view
         except Exception:
             pass
@@ -3473,6 +3523,14 @@ def cargar_prospectos(force_reload: bool = False) -> pd.DataFrame:
                 if h not in df_view.columns:
                     df_view[h] = ""
             df_view = df_view[[h for h in SHEET_HEADERS if h in df_view.columns]]
+            try:
+                agg = aggregate_prospects_to_months(df_view)
+                try:
+                    st.session_state['prospect_month_buckets'] = agg
+                except Exception:
+                    pass
+            except Exception:
+                pass
             return df_view
     except Exception:
         pass
