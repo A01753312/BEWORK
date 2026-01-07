@@ -6590,28 +6590,34 @@ with tab_prosp:
     else:
         st.dataframe(df_prosp_view, use_container_width=True)
 
-        # Mostrar lista por mes: prospectos que corresponden a cada mes detectado
+        # Mostrar lista por mes (solo 'Mes Año' y abajo prospectos)
         try:
             monthly = aggregate_prospects_to_months(df_prosp_view)
             if monthly:
                 st.markdown("**Prospectos detectados por mes:**")
+                # mapping meses num->nombre en español
+                meses = {1: 'Enero',2:'Febrero',3:'Marzo',4:'Abril',5:'Mayo',6:'Junio',7:'Julio',8:'Agosto',9:'Septiembre',10:'Octubre',11:'Noviembre',12:'Diciembre'}
                 for k in sorted(monthly.keys()):
-                    info = monthly[k]
-                    total_m = info.get('total_monto', 0.0)
-                    total_d = info.get('total_descuento', 0.0)
-                    cnt = info.get('count', 0)
-                    st.write(f"### {k} — monto={total_m:,.2f}, descuento={total_d:,.2f}, items={cnt}")
-                    for e in info.get('entries', []):
-                        pid = e.get('id') or ''
-                        nombre = e.get('nombre') or ''
-                        monto = e.get('monto') or 0.0
-                        desc = e.get('descuento') or 0.0
-                        cat = e.get('cat')
-                        label = f"- {pid}"
-                        if nombre:
-                            label += f" - {nombre}"
-                        label += f": monto={monto:,.2f}, descuento={desc:,.2f}, cat={cat}"
-                        st.write(label)
+                    # esperar formato YYYY-MM
+                    try:
+                        year, mon = k.split('-')
+                        mon_int = int(mon)
+                        title = f"{meses.get(mon_int, mon)} {year}"
+                    except Exception:
+                        title = k
+                    st.markdown(f"**{title}**")
+                    # Mostrar solo una línea por prospecto: 'ID - Nombre'
+                    seen = set()
+                    for e in monthly[k].get('entries', []):
+                        pid = (e.get('id') or '').strip()
+                        nombre = (e.get('nombre') or '').strip()
+                        label = pid or nombre or "(sin id/nombre)"
+                        if pid and nombre:
+                            label = f"{pid} - {nombre}"
+                        if label in seen:
+                            continue
+                        seen.add(label)
+                        st.write(f"- {label}")
         except Exception:
             pass
 
