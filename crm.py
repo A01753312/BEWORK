@@ -998,7 +998,8 @@ def generar_presentacion_dashboard(df_cli: pd.DataFrame) -> bytes:
     
     # Calcular todas las métricas necesarias
     total_clientes = len(df_cli)
-    estatus_counts = df_cli["estatus"].fillna("").value_counts()
+    # Normalizar estatus para los conteos del reporte (aplicar mapeos a DISPERSADO)
+    estatus_counts = df_cli["estatus"].fillna("").apply(lambda s: _maybe_convert_to_dispersado(s).strip() if s is not None else "").value_counts()
     
     # Contar como dispersados también los estatus que mapean a DISPERSADO
     dispersados = sum([
