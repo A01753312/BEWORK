@@ -948,6 +948,72 @@ def formatear_monto(monto: float) -> str:
         return f"${monto:,.0f}"
 
 
+def parse_comments_to_month_buckets(text: str, default_year: int | None = None) -> dict:
+    """Parsea un texto de comentarios de prospectos y los agrupa por mes-año.
+
+    Devuelve un diccionario con claves 'YYYY-MM' y listas de entradas.
+    Cada entrada es un dict con campos: 'monto', 'descuento', 'cat', 'text'.
+
+    - Si el mes aparece sin año, usa `default_year` o el año actual.
+    - Detecta patrones como 'ABRIL 2026', 'Monto: $40,087.83', 'descuento: $1,421', 'CAT:37.78%'.
+    """
+    import re
+    from datetime import datetime
+
+    if not text:
+        return {}
+
+    months = {
+        'ENERO': 1, 'FEBRERO': 2, 'MARZO': 3, 'ABRIL': 4, 'MAYO': 5, 'JUNIO': 6,
+        'JULIO': 7, 'AGOSTO': 8, 'SEPTIEMBRE': 9, 'OCTUBRE': 10, 'NOVIEMBRE': 11, 'DICIEMBRE': 12
+    }
+
+    month_names_pattern = '|'.join(months.keys())
+    # Buscar todas las ocurrencias de mes (opcionalmente seguidas por año)
+    pattern = re.compile(r"\b(" + month_names_pattern + r")\b\s*(\d{4})?", re.IGNORECASE)
+    matches = list(pattern.finditer(text))
+    if not matches:
+        return {}
+
+    buckets: dict = {}
+    now_year = datetime.now().year
+
+    for i, m in enumerate(matches):
+        start = m.start()
+        end = matches[i+1].start() if i+1 < len(matches) else len(text)
+        segment = text[start:end]
+        month_name = m.group(1).upper()
+        year_group = m.group(2)
+        month_num = months.get(month_name, 0)
+        year_num = int(year_group) if year_group else (default_year or now_year)
+        key = f"{year_num:04d}-{month_num:02d}"
+
+        # Extraer monto, descuento y CAT dentro del segmento
+        monto_m = re.search(r"Monto[:\s]*\$?([0-9\.,]+)", segment, re.IGNORECASE)
+        descuento_m = re.search(r"descuento[:\s]*\$?([0-9\.,]+)", segment, re.IGNORECASE)
+        cat_m = re.search(r"CAT[:\s]*([0-9\.,]+)%", segment, re.IGNORECASE)
+
+        def _to_float(s: str | None) -> float | None:
+            if not s:
+                return None
+            s2 = s.replace(',', '').replace(' ', '')
+            try:
+                return float(s2)
+            except Exception:
+                return None
+
+        entry = {
+            'monto': _to_float(monto_m.group(1)) if monto_m else None,
+            'descuento': _to_float(descuento_m.group(1)) if descuento_m else None,
+            'cat': _to_float(cat_m.group(1)) if cat_m else None,
+            'text': segment.strip()
+        }
+
+        buckets.setdefault(key, []).append(entry)
+
+    return buckets
+
+
 def generar_presentacion_dashboard(df_cli: pd.DataFrame) -> bytes:
     """Genera una presentación PowerPoint completa del dashboard con gráficas"""
     from pptx import Presentation
