@@ -5197,7 +5197,8 @@ with tab_dash:
                 st.info("No se encontró columna `producto` para filtrar; mostrando todos los productos.")
 
         total_clientes = len(df_dash)
-        estatus_counts = df_dash["estatus"].fillna("").value_counts()
+        # Normalizar estatus para conteos del dashboard (aplicar mapeos a DISPERSADO)
+        estatus_counts = df_dash["estatus"].fillna("").apply(lambda s: _maybe_convert_to_dispersado(s).strip() if s is not None else "").value_counts()
 
         # Calcular KPIs principales con lógica corregida
         # Contar como dispersados también los estatus que mapean a DISPERSADO
