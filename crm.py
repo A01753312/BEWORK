@@ -3039,7 +3039,7 @@ COLUMNS = [
     "estado_civil","tipo_vivienda","correo",
     "ref1_nombre","ref1_telefono","ref1_parentesco",
     "ref2_nombre","ref2_telefono","ref2_parentesco",
-    "antiguedad_cuenta","asesor",
+    "antiguedad_cuenta","usuario_cipre","contrasena","asesor",
     "fecha_ingreso","fecha_dispersion",
     "estatus","observaciones","fase",
     "registro_tipo"
