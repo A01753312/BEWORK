@@ -6620,6 +6620,20 @@ with tab_prosp:
                     except Exception:
                         cur_int[internal] = ""
 
+                # Mostrar buckets mensuales detectados a partir de las observaciones (si aplica)
+                try:
+                    obs_text = str(cur_int.get('observaciones', '') or '')
+                    buckets = parse_comments_to_month_buckets(obs_text)
+                    if buckets:
+                        st.markdown("**Buckets mensuales detectados:**")
+                        for k in sorted(buckets.keys()):
+                            total_monto = sum([(e.get('monto') or 0) for e in buckets[k]])
+                            total_desc = sum([(e.get('descuento') or 0) for e in buckets[k]])
+                            cats = [e.get('cat') for e in buckets[k] if e.get('cat') is not None]
+                            st.write(f"- {k}: monto={total_monto:,.2f}, descuento={total_desc:,.2f}, cat(s)={cats}")
+                except Exception:
+                    pass
+
                 with st.form(f"form_edit_prosp_{pid_sel}", clear_on_submit=False):
                     c1, c2 = st.columns(2)
                     with c1:
