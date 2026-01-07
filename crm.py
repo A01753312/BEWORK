@@ -1027,8 +1027,14 @@ def aggregate_prospects_to_months(df_view: pd.DataFrame) -> dict:
     # Nombre de la columna humana para observaciones
     obs_col = SHEET_HEADERS[-1] if SHEET_HEADERS else 'Observaciones'
 
+    # Column names for ID and Nombre (encabezados humanos)
+    id_col = "ID (opcional)"
+    name_col = "Nombre *"
+
     for _, row in df_view.iterrows():
         text = str(row.get(obs_col, '') or '')
+        pid = str(row.get(id_col, '') or '').strip()
+        pname = str(row.get(name_col, '') or '').strip()
         buckets = parse_comments_to_month_buckets(text)
         for key, entries in buckets.items():
             for e in entries:
@@ -1041,6 +1047,11 @@ def aggregate_prospects_to_months(df_view: pd.DataFrame) -> dict:
                 except Exception:
                     desc = 0.0
                 cat = e.get('cat')
+                # Enriquecer la entrada con id/nombre del prospecto
+                enriched = dict(e)
+                enriched['id'] = pid
+                enriched['nombre'] = pname
+
                 agg[key]['total_monto'] += monto
                 agg[key]['total_descuento'] += desc
                 agg[key]['count'] += 1
@@ -1049,7 +1060,7 @@ def aggregate_prospects_to_months(df_view: pd.DataFrame) -> dict:
                         agg[key]['cats'].append(float(cat))
                     except Exception:
                         pass
-                agg[key]['entries'].append(e)
+                agg[key]['entries'].append(enriched)
 
     # Convert defaultdict to normal dict
     return {k: v for k, v in agg.items()}
@@ -6578,6 +6589,31 @@ with tab_prosp:
         st.info("Sin prospectos en la hoja 'prospecto' aún.")
     else:
         st.dataframe(df_prosp_view, use_container_width=True)
+
+        # Mostrar lista por mes: prospectos que corresponden a cada mes detectado
+        try:
+            monthly = aggregate_prospects_to_months(df_prosp_view)
+            if monthly:
+                st.markdown("**Prospectos detectados por mes:**")
+                for k in sorted(monthly.keys()):
+                    info = monthly[k]
+                    total_m = info.get('total_monto', 0.0)
+                    total_d = info.get('total_descuento', 0.0)
+                    cnt = info.get('count', 0)
+                    st.write(f"### {k} — monto={total_m:,.2f}, descuento={total_d:,.2f}, items={cnt}")
+                    for e in info.get('entries', []):
+                        pid = e.get('id') or ''
+                        nombre = e.get('nombre') or ''
+                        monto = e.get('monto') or 0.0
+                        desc = e.get('descuento') or 0.0
+                        cat = e.get('cat')
+                        label = f"- {pid}"
+                        if nombre:
+                            label += f" - {nombre}"
+                        label += f": monto={monto:,.2f}, descuento={desc:,.2f}, cat={cat}"
+                        st.write(label)
+        except Exception:
+            pass
 
         # --- Editar Prospecto ---
         try:
