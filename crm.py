@@ -5349,68 +5349,45 @@ with tab_dash:
                 st.info("No se encontró columna `producto` para filtrar; mostrando todos los productos.")
 
         total_clientes = len(df_dash)
-        # Normalizar estatus para conteos del dashboard (aplicar mapeos a DISPERSADO)
-        estatus_counts = df_dash["estatus"].fillna("").apply(lambda s: _maybe_convert_to_dispersado(s).strip() if s is not None else "").value_counts()
-
-        # Calcular KPIs principales con lógica corregida
-        # Contar como dispersados también los estatus que mapean a DISPERSADO
-        dispersados = sum([
-            count for estatus, count in estatus_counts.items()
-            if _maybe_convert_to_dispersado(estatus) == "DISPERSADO"
-        ])
-
-        # Clasificar automáticamente todos los estatus que empiecen con "RECH" como rechazados
-        rechazados = sum([
-            count for estatus, count in estatus_counts.items()
-            if estatus and (estatus.startswith("RECH") or estatus.startswith("REC"))
-        ])
-
-        # === NUEVO: calcular propuestas (clientes con monto de propuesta) ===
-        analisis_tmp = calcular_analisis_financiero(df_dash)
-        total_propuestas = int(analisis_tmp.get('clientes_con_monto', 0))
-        dispersados_con_monto = int(analisis_tmp.get('dispersados_con_monto', 0))
-
-        # Propuestas que aún no se han dispersado
-        propuestas_no_dispersadas = max(0, total_propuestas - dispersados_con_monto)
         
-        # Mostrar KPIs profesionales en columnas
-        kpi1, kpi2, kpi3, kpi4 = st.columns(4)
+        # Calcular KPIs principales mostrando los mismos estatus que en "Análisis por Estatus"
+        # Primero limpiar y normalizar estatus vacíos o nulos
+        df_temp_kpi = df_dash.copy()
+        df_temp_kpi["estatus_clean"] = df_temp_kpi["estatus"].fillna("(Sin estatus)").replace("", "(Sin estatus)")
+        df_temp_kpi["estatus_clean"] = df_temp_kpi["estatus_clean"].apply(lambda x: x.strip() if str(x).strip() else "(Sin estatus)")
         
-        with kpi1:
+        estatus_data = df_temp_kpi["estatus_clean"].value_counts()
+        estatus_data = estatus_data[estatus_data > 0]  # Filtrar solo valores > 0
+        
+        # Mostrar KPI de Total de Clientes y luego los estatus individuales
+        col_list = st.columns(min(4, max(1, len(estatus_data) + 1)))
+        
+        # KPI 1: Total de Clientes
+        with col_list[0]:
             st.metric(
                 label="👥 Total de Clientes",
                 value=total_clientes,
                 help="Número total de clientes en la base de datos"
             )
         
-        with kpi2:
-            # Mostrar dispersados pero en relación a las propuestas (monto)
-            tasa_exito = (dispersados_con_monto / total_propuestas * 100) if total_propuestas > 0 else 0
-            st.metric(
-                label="✅ Dispersados (Éxito)",
-                value=dispersados_con_monto,
-                delta=f"{tasa_exito:.1f}% de propuestas",
-                help="Clientes dispersados considerando solo propuestas (monto)"
-            )
-
-        with kpi3:
-            # Mostrar propuestas que aún no se han dispersado (no-dispersado / total propuestas)
-            tasa_proceso = (propuestas_no_dispersadas / total_propuestas * 100) if total_propuestas > 0 else 0
-            st.metric(
-                label="⏳ Propuestas no dispersadas",
-                value=propuestas_no_dispersadas,
-                delta=f"{tasa_proceso:.1f}% de propuestas",
-                help="Propuestas con monto que aún no se han dispersado (no-dispersado/total propuestas)"
-            )
-        
-        with kpi4:
-            tasa_rechazo = (rechazados / total_clientes * 100) if total_clientes > 0 else 0
-            st.metric(
-                label="❌ Rechazados",
-                value=rechazados,
-                delta=f"{tasa_rechazo:.1f}% del total",
-                help="Clientes rechazados por diversos motivos"
-            )
+        # KPIs para cada estatus individual
+        for idx, (estatus, cantidad) in enumerate(estatus_data.items(), start=1):
+            if idx < len(col_list):
+                col = col_list[idx]
+            else:
+                # Si hay más estatus que columnas, recrear columnas
+                st.markdown("---")
+                col_list = st.columns(min(4, len(estatus_data) - idx + 1))
+                col = col_list[0]
+            
+            with col:
+                porcentaje = (cantidad / total_clientes * 100) if total_clientes > 0 else 0
+                st.metric(
+                    label=f"📋 {estatus}",
+                    value=cantidad,
+                    delta=f"{porcentaje:.1f}% del total",
+                    help=f"Clientes con estatus: {estatus}"
+                )
         
         # 💹 Top Estatus — Total Vendido
         st.markdown("##### 💹 Top Estatus — Total Vendido")
