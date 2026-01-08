@@ -1116,10 +1116,20 @@ def generar_presentacion_dashboard(df_cli: pd.DataFrame) -> bytes:
     
     # Calcular todas las métricas necesarias
     total_clientes = len(df_cli)
-    # Normalizar estatus para los conteos del reporte (aplicar mapeos a DISPERSADO)
-    estatus_counts = df_cli["estatus"].fillna("").apply(lambda s: _maybe_convert_to_dispersado(s).strip() if s is not None else "").value_counts()
     
-    # Contar como dispersados también los estatus que mapean a DISPERSADO
+    # Contar estatus individuales (sin agrupar) como aparecen en el Análisis por Estatus
+    df_temp = df_cli.copy()
+    df_temp["estatus_clean"] = df_temp["estatus"].fillna("(Sin estatus)").replace("", "(Sin estatus)")
+    df_temp["estatus_clean"] = df_temp["estatus_clean"].apply(lambda x: x.strip() if str(x).strip() else "(Sin estatus)")
+    
+    # Obtener conteo de estatus individuales
+    estatus_counts_individual = df_temp["estatus_clean"].value_counts().to_dict()
+    
+    # Ordenar por cantidad descendente
+    estatus_sorted = sorted(estatus_counts_individual.items(), key=lambda x: x[1], reverse=True)
+    
+    # Para gráfico de pie, seguir agrupando (Dispersados, En Proceso, Rechazados)
+    estatus_counts = df_cli["estatus"].fillna("").apply(lambda s: _maybe_convert_to_dispersado(s).strip() if s is not None else "").value_counts()
     dispersados = sum([
         count for estatus, count in estatus_counts.items()
         if _maybe_convert_to_dispersado(estatus) == "DISPERSADO"
@@ -1179,22 +1189,28 @@ def generar_presentacion_dashboard(df_cli: pd.DataFrame) -> bytes:
     title_p.font.bold = True
     title_p.font.color.rgb = RGBColor(33, 37, 41)
     
-    # KPIs en cuadros
-    kpis = [
-        ("Total de Clientes", total_clientes, "👥", ""),
-        ("Dispersados (Éxito)", dispersados, "✅", f"{tasa_exito:.1f}%"),
-        ("En Proceso", en_proceso, "⏳", f"{tasa_proceso:.1f}%"),
-        ("Rechazados", rechazados, "❌", f"{tasa_rechazo:.1f}%")
-    ]
+    # KPIs en cuadros - mostrar estatus individuales como en Análisis por Estatus
+    kpis = [("Total de Clientes", total_clientes, "👥", "")]
     
+    # Agregar cada estatus individual con su conteo y porcentaje
+    for estatus, count in estatus_sorted:
+        porcentaje = (count / total_clientes * 100) if total_clientes > 0 else 0
+        kpis.append((estatus, count, "📋", f"{porcentaje:.1f}%"))
+    
+    # Limitado a 4 KPIs por fila (Total + 3 estatus en la primera fila, resto en siguientes)
     x_start = 0.5
-    y_pos = 1.5
+    y_start = 1.5
     width = 2.2
     height = 1.8
     gap = 0.15
+    max_per_row = 4
     
-    for i, (label, value, icon, delta) in enumerate(kpis):
-        x_pos = x_start + i * (width + gap)
+    for idx, (label, value, icon, delta) in enumerate(kpis):
+        row = idx // max_per_row
+        col = idx % max_per_row
+        
+        x_pos = x_start + col * (width + gap)
+        y_pos = y_start + row * (height + gap + 0.3)
         
         # Caja con borde
         shape = slide.shapes.add_shape(
@@ -1211,8 +1227,9 @@ def generar_presentacion_dashboard(df_cli: pd.DataFrame) -> bytes:
         )
         label_frame = label_box.text_frame
         label_frame.text = f"{icon} {label}"
+        label_frame.word_wrap = True
         label_p = label_frame.paragraphs[0]
-        label_p.font.size = Pt(11)
+        label_p.font.size = Pt(10)
         label_p.font.color.rgb = RGBColor(108, 117, 125)
         label_p.alignment = PP_ALIGN.CENTER
         
@@ -1223,7 +1240,7 @@ def generar_presentacion_dashboard(df_cli: pd.DataFrame) -> bytes:
         value_frame = value_box.text_frame
         value_frame.text = str(value)
         value_p = value_frame.paragraphs[0]
-        value_p.font.size = Pt(36)
+        value_p.font.size = Pt(32)
         value_p.font.bold = True
         value_p.font.color.rgb = RGBColor(33, 37, 41)
         value_p.alignment = PP_ALIGN.CENTER
@@ -1236,7 +1253,7 @@ def generar_presentacion_dashboard(df_cli: pd.DataFrame) -> bytes:
             delta_frame = delta_box.text_frame
             delta_frame.text = delta
             delta_p = delta_frame.paragraphs[0]
-            delta_p.font.size = Pt(10)
+            delta_p.font.size = Pt(9)
             delta_p.font.color.rgb = RGBColor(108, 117, 125)
             delta_p.alignment = PP_ALIGN.CENTER
     
