@@ -6677,13 +6677,27 @@ with tab_prosp:
                     pass
 
                 with st.form(f"form_edit_prosp_{pid_sel}", clear_on_submit=False):
-                    c1, c2 = st.columns(2)
+                    c1, c2, c3 = st.columns(3)
                     with c1:
                         nombre_n = st.text_input("Nombre *", value=cur_int.get("nombre", ""))
-                        producto_n = st.selectbox("Producto *", ["MEJORAVIT","INBURSA","MULTIVA"], index=( ["MEJORAVIT","INBURSA","MULTIVA"].index(cur_int.get("producto")) if cur_int.get("producto") in ["MEJORAVIT","INBURSA","MULTIVA"] else 0))
+                        tipo_tramite_n = st.selectbox("Tipo de trámite", ["Compra de deuda", "Renovacion", "Nuevo", "Adicional"], index=(["Compra de deuda","Renovacion","Nuevo","Adicional"].index(cur_int.get("tipo_tramite")) if cur_int.get("tipo_tramite") in ["Compra de deuda","Renovacion","Nuevo","Adicional"] else 2), key=f"edit_prosp_tipo_tramite_{pid_sel}")
+                        fuente_select = st.selectbox("Fuente", ["LUZWARE", "LEADS", "SEGUIMIENTO"], index=(["LUZWARE","LEADS","SEGUIMIENTO"].index(cur_int.get("fuente")) if cur_int.get("fuente") in ["LUZWARE","LEADS","SEGUIMIENTO"] else 1), key=f"edit_prosp_fuente_{pid_sel}")
+                        fuente_base_input = ""
+                        if fuente_select == "LUZWARE":
+                            fuente_base_input = st.text_input("Nombre de la base (LUZWARE) - escribir en mayúsculas", value=cur_int.get("fuente_base", ""))
                         telefono_n = st.text_input("Teléfono", value=cur_int.get("telefono", ""))
-                        sucursal_n = st.selectbox("Sucursal *", SUCURSALES, index=( SUCURSALES.index(cur_int.get("sucursal")) if cur_int.get("sucursal") in SUCURSALES else 0))
+                        sucursal_n = st.selectbox("Sucursal *", SUCURSALES, index=(SUCURSALES.index(cur_int.get("sucursal")) if cur_int.get("sucursal") in SUCURSALES else 0), key=f"edit_prosp_sucursal_{pid_sel}")
+                        producto_n = st.selectbox("Producto *", ["MEJORAVIT","INBURSA","MULTIVA"], index=(["MEJORAVIT","INBURSA","MULTIVA"].index(cur_int.get("producto")) if cur_int.get("producto") in ["MEJORAVIT","INBURSA","MULTIVA"] else 0), key=f"edit_prosp_producto_{pid_sel}")
                     with c2:
+                        try:
+                            fecha_ing_val = parse_dates_flexible(pd.Series([cur_int.get("fecha_ingreso", "")]))[0].date() if cur_int.get("fecha_ingreso") else date.today()
+                        except Exception:
+                            fecha_ing_val = date.today()
+                        fecha_ingreso_n = st.date_input("Fecha ingreso", value=fecha_ing_val, key=f"edit_prosp_fecha_ing_{pid_sel}")
+                        capacidad_n = st.text_input("Capacidad", value=cur_int.get("capacidad", ""), key=f"edit_prosp_capacidad_{pid_sel}")
+                        monto_solicitado_n = st.text_input("Monto Solicitado", value=cur_int.get("monto_propuesta", ""), key=f"edit_prosp_monto_{pid_sel}")
+                        plazo_n = st.selectbox("Plazo (meses)", [12,24,36,28,54,60], index=([12,24,36,28,54,60].index(int(cur_int.get("plazo"))) if cur_int.get("plazo") not in (None,"") and str(cur_int.get("plazo")).isdigit() and int(cur_int.get("plazo")) in [12,24,36,28,54,60] else 0), key=f"edit_prosp_plazo_{pid_sel}")
+                        estado_civil_n = st.selectbox("Estado civil", ["Casado","Soltero","Viudo","Divorciado"], index=(["Casado","Soltero","Viudo","Divorciado"].index(cur_int.get("estado_civil")) if cur_int.get("estado_civil") in ["Casado","Soltero","Viudo","Divorciado"] else 1), key=f"edit_prosp_estado_civil_{pid_sel}")
                         prod_upper = (producto_n or "").strip().upper()
                         if prod_upper == "INBURSA":
                             estatus_choices = ESTATUS_INBURSA_OPCIONES or ESTATUS_OPCIONES
@@ -6701,10 +6715,27 @@ with tab_prosp:
                             index=(estatus_choices.index(cur_int.get("estatus")) if cur_int.get("estatus") in estatus_choices else 0),
                             key=estatus_key
                         )
-                        observaciones_n = st.text_area("Observaciones", value=cur_int.get("observaciones", ""))
+                    with c3:
+                        tipo_vivienda_n = st.selectbox("Tipo de vivienda", ["Propia","Renta"], index=(["Propia","Renta"].index(cur_int.get("tipo_vivienda")) if cur_int.get("tipo_vivienda") in ["Propia","Renta"] else 0), key=f"edit_prosp_tipo_vivienda_{pid_sel}")
+                        correo_n = st.text_input("Correo", value=cur_int.get("correo", ""), key=f"edit_prosp_correo_{pid_sel}")
+                        # Referencia 1
+                        ref1_nombre_n = st.text_input("Referencia 1 - Nombre", value=cur_int.get("ref1_nombre", ""), key=f"edit_prosp_ref1_nombre_{pid_sel}")
+                        ref1_telefono_n = st.text_input("Referencia 1 - Teléfono", value=cur_int.get("ref1_telefono", ""), key=f"edit_prosp_ref1_telefono_{pid_sel}")
+                        ref1_parentesco_n = st.selectbox("Referencia 1 - Parentesco", ["Hijo","Espos@","Amig@","Familiar"], index=(["Hijo","Espos@","Amig@","Familiar"].index(cur_int.get("ref1_parentesco")) if cur_int.get("ref1_parentesco") in ["Hijo","Espos@","Amig@","Familiar"] else 0), key=f"edit_prosp_ref1_parentesco_{pid_sel}")
+                        # Referencia 2
+                        ref2_nombre_n = st.text_input("Referencia 2 - Nombre", value=cur_int.get("ref2_nombre", ""), key=f"edit_prosp_ref2_nombre_{pid_sel}")
+                        ref2_telefono_n = st.text_input("Referencia 2 - Teléfono", value=cur_int.get("ref2_telefono", ""), key=f"edit_prosp_ref2_telefono_{pid_sel}")
+                        ref2_parentesco_n = st.selectbox("Referencia 2 - Parentesco", ["Hijo","Espos@","Amig@","Familiar"], index=(["Hijo","Espos@","Amig@","Familiar"].index(cur_int.get("ref2_parentesco")) if cur_int.get("ref2_parentesco") in ["Hijo","Espos@","Amig@","Familiar"] else 0), key=f"edit_prosp_ref2_parentesco_{pid_sel}")
+                        antiguedad_cuenta_n = st.text_input("Antigüedad de la cuenta registrada", value=cur_int.get("antiguedad_cuenta", ""), key=f"edit_prosp_antiguedad_{pid_sel}")
+                        usuario_cipre_n = st.text_input("Usuario Cipre", value=cur_int.get("usuario_cipre", ""), key=f"edit_prosp_usuario_cipre_{pid_sel}")
+                        contrasena_n = st.text_input("Contraseña", value=cur_int.get("contrasena", ""), key=f"edit_prosp_contrasena_{pid_sel}")
+                    
+                    observaciones_n = st.text_area("Observaciones", value=cur_int.get("observaciones", ""))
 
                     if st.form_submit_button("Guardar cambios prospecto"):
                         # Construir dict interno
+                        fuente_n = str(fuente_select).strip().upper()
+                        fuente_base_n = (fuente_base_input or "").strip().upper()
                         updated = cur_int.copy()
                         updated.update({
                             "id": pid_sel,
@@ -6713,7 +6744,26 @@ with tab_prosp:
                             "telefono": telefono_n.strip(),
                             "sucursal": sucursal_n,
                             "estatus": estatus_n,
-                            "observaciones": observaciones_n.strip()
+                            "observaciones": observaciones_n.strip(),
+                            "tipo_tramite": tipo_tramite_n,
+                            "fuente": fuente_n,
+                            "fuente_base": fuente_base_n,
+                            "fecha_ingreso": str(fecha_ingreso_n),
+                            "capacidad": capacidad_n.strip(),
+                            "monto_propuesta": str(monto_solicitado_n).strip(),
+                            "plazo": str(plazo_n),
+                            "estado_civil": estado_civil_n,
+                            "tipo_vivienda": tipo_vivienda_n,
+                            "correo": correo_n.strip(),
+                            "ref1_nombre": ref1_nombre_n.strip(),
+                            "ref1_telefono": ref1_telefono_n.strip(),
+                            "ref1_parentesco": ref1_parentesco_n.strip(),
+                            "ref2_nombre": ref2_nombre_n.strip(),
+                            "ref2_telefono": ref2_telefono_n.strip(),
+                            "ref2_parentesco": ref2_parentesco_n.strip(),
+                            "antiguedad_cuenta": antiguedad_cuenta_n.strip(),
+                            "usuario_cipre": usuario_cipre_n.strip(),
+                            "contrasena": contrasena_n.strip()
                         })
                         ok = actualizar_prospecto_en_sheet(updated)
                         if ok:
