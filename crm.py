@@ -6335,13 +6335,11 @@ with tab_cli:
                 except Exception:
                     df_clientes_mostrar[_dcol] = df_clientes_mostrar[_dcol].astype(str).fillna("")
         # Mapear use_container_width -> width param: True -> 'stretch', False -> 'content'
-        ed = st.data_editor(
+        st.dataframe(
             df_clientes_mostrar,
             use_container_width=True,
-            width='stretch',
             hide_index=True,
-            column_config=colcfg,
-            key="editor_clientes"
+            column_config=colcfg
         )
 
         st.markdown("### Editar cliente (cambio de información)")
@@ -6486,7 +6484,7 @@ with tab_cli:
                 # conservar copia original para detectar cambios y registrar historial
                 original_df = df_cli.copy()
                 base = df_cli.set_index("id")
-                for _, row in ed.iterrows():
+                for _, row in df_clientes_mostrar.iterrows():
                     cid = row["id"]
                     for k in COLUMNS:
                         if k == "id":
