@@ -731,6 +731,15 @@ st.markdown("""
         justify-content: center;
         align-items: center;
     }
+    
+    /* Ocultar botón de descarga del DataFrame (CSV) */
+    button[title="Download as CSV"],
+    button[aria-label="Download as CSV"],
+    button[title="Descargar como CSV"],
+    button[aria-label="Descargar como CSV"] {
+        display: none !important;
+    }
+
 </style>
 """, unsafe_allow_html=True)
 
