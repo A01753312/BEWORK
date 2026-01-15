@@ -5498,6 +5498,49 @@ with tab_dash:
 
         
         st.markdown("---")
+        # =======================
+        # Filtro de fechas (solo para tabs: Estatus y Sucursal/Asesor)
+        # =======================
+        st.markdown("##### 📅 Filtro por fechas (aplica a: 📊 Por Estatus y 🏢 Por Sucursal/Asesor)")
+
+        try:
+            parsed_ing_tabs = parse_dates_flexible(df_dash.get("fecha_ingreso", pd.Series([""] * len(df_dash))))
+            valid_ing_tabs = parsed_ing_tabs.dropna()
+            if not valid_ing_tabs.empty:
+                min_dt_tabs = valid_ing_tabs.min().date()
+                max_dt_tabs = valid_ing_tabs.max().date()
+            else:
+                min_dt_tabs = date.today()
+                max_dt_tabs = date.today()
+        except Exception:
+            min_dt_tabs = date.today()
+            max_dt_tabs = date.today()
+
+        tabs_date_range = st.date_input(
+            "Rango de fecha de ingreso",
+            value=(min_dt_tabs, max_dt_tabs),
+            key="dashboard_tabs_date_range"
+        )
+
+        # Normalizar start/end
+        try:
+            if isinstance(tabs_date_range, tuple) and len(tabs_date_range) == 2:
+                tabs_start, tabs_end = tabs_date_range
+            else:
+                tabs_start = tabs_end = tabs_date_range
+        except Exception:
+            tabs_start = min_dt_tabs
+            tabs_end = max_dt_tabs
+
+        # DataFrame filtrado SOLO para tabs 1 y 3
+        df_tabs = df_dash.copy()
+        try:
+            if parsed_ing_tabs.notna().any():
+                mask_tabs = (parsed_ing_tabs.dt.date >= tabs_start) & (parsed_ing_tabs.dt.date <= tabs_end)
+                df_tabs = df_dash[mask_tabs.fillna(False)].copy()
+        except Exception:
+            df_tabs = df_dash.copy()
+        
         
         # �🔄 TABS SECUNDARIAS PARA ANÁLISIS DETALLADO
         dash_tab1, dash_tab2, dash_tab3 = st.tabs([
@@ -5510,9 +5553,12 @@ with tab_dash:
         with dash_tab1:
             st.subheader("Análisis por Estatus")
             
+            # Total de clientes en la tab (con filtro de fechas)
+            total_clientes_tab = len(df_tabs)
+            
             # Solo mostrar estatus con valores > 0 (más limpio)
             # Primero limpiar y normalizar estatus vacíos o nulos
-            df_temp = df_cli.copy()
+            df_temp = df_tabs.copy()
             df_temp["estatus_clean"] = df_temp["estatus"].fillna("(Sin estatus)").replace("", "(Sin estatus)")
             df_temp["estatus_clean"] = df_temp["estatus_clean"].apply(lambda x: x.strip() if str(x).strip() else "(Sin estatus)")
             
@@ -5525,7 +5571,7 @@ with tab_dash:
                 # Convertir a DataFrame y agregar porcentajes
                 estatus_df = estatus_data.reset_index()
                 estatus_df.columns = ["estatus", "cantidad"]
-                estatus_df["porcentaje"] = (estatus_df["cantidad"] / total_clientes * 100).round(1)
+                estatus_df["porcentaje"] = (estatus_df["cantidad"] / total_clientes_tab * 100).round(1) if total_clientes_tab > 0 else 0
                 
                 # Ordenar por cantidad (descendente)
                 estatus_df = estatus_df.sort_values("cantidad", ascending=False)
@@ -5737,7 +5783,7 @@ with tab_dash:
             
             # SUB-TAB: SUCURSALES
             with sub_tab1:
-                sucursal_counts = df_cli["sucursal"].fillna("(Sin sucursal)").value_counts()
+                sucursal_counts = df_tabs["sucursal"].fillna("(Sin sucursal)").value_counts()
                 sucursal_counts = sucursal_counts[sucursal_counts > 0]
                 
                 if sucursal_counts.empty:
@@ -5745,7 +5791,7 @@ with tab_dash:
                 else:
                     sucursal_df = sucursal_counts.reset_index()
                     sucursal_df.columns = ["sucursal", "cantidad"]
-                    sucursal_df["porcentaje"] = (sucursal_df["cantidad"] / total_clientes * 100).round(1)
+                    sucursal_df["porcentaje"] = (sucursal_df["cantidad"] / len(df_tabs) * 100).round(1)
                     
                     col1, col2 = st.columns([1, 2])
                     
@@ -5784,28 +5830,28 @@ with tab_dash:
                 # para mostrar todos los asesores (misma lógica que en tab_asesores)
                 try:
                     # Aplicar filtros SIN incluir el filtro de asesor
-                    sucursal_for_filter = df_cli["sucursal"].fillna("").replace({"": "(Sin sucursal)"})
-                    fuente_for_filter = df_cli["fuente"].fillna("").replace({"": "(Sin fuente)"})
+                    sucursal_for_filter = df_tabs["sucursal"].fillna("").replace({"": "(Sin sucursal)"})
+                    fuente_for_filter = df_tabs["fuente"].fillna("").replace({"": "(Sin fuente)"})
                     
                     # Aplicar solo filtros de sucursal, estatus y fuente (NO asesor)
                     if not f_suc or len(f_suc) == 0 or set(f_suc) == set(SUC_ALL):
-                        suc_mask_dash = pd.Series(True, index=df_cli.index)
+                        suc_mask_dash = pd.Series(True, index=df_tabs.index)
                     else:
                         suc_mask_dash = sucursal_for_filter.isin(f_suc)
 
                     # Filtro de estatus eliminado en dashboard — incluir todos
-                    est_mask_dash = pd.Series(True, index=df_cli.index)
+                    est_mask_dash = pd.Series(True, index=df_tabs.index)
 
                     if not f_fuente or len(f_fuente) == 0 or set(f_fuente) == set(FUENTE_ALL):
-                        fuente_mask_dash = pd.Series(True, index=df_cli.index)
+                        fuente_mask_dash = pd.Series(True, index=df_tabs.index)
                     else:
                         fuente_mask_dash = fuente_for_filter.isin(f_fuente)
                     
                     # Datos filtrados para asesores (sin filtro de asesor)
-                    df_asesor_dash = df_cli[suc_mask_dash & est_mask_dash & fuente_mask_dash]
+                    df_asesor_dash = df_tabs[suc_mask_dash & est_mask_dash & fuente_mask_dash]
                 except Exception:
-                    # Fallback: usar todos los datos
-                    df_asesor_dash = df_cli
+                    # Fallback: usar todos los datos filtrados por fecha
+                    df_asesor_dash = df_tabs
                 
                 asesor_counts = df_asesor_dash["asesor"].fillna("(Sin asesor)").value_counts()
                 asesor_counts = asesor_counts[asesor_counts > 0]
@@ -5857,7 +5903,7 @@ with tab_dash:
             
             # SUB-TAB: FUENTES
             with sub_tab3:
-                fuente_counts = df_cli["fuente"].fillna("(Sin fuente)").value_counts()
+                fuente_counts = df_tabs["fuente"].fillna("(Sin fuente)").value_counts()
                 fuente_counts = fuente_counts[fuente_counts > 0]
                 
                 if fuente_counts.empty:
@@ -5865,7 +5911,7 @@ with tab_dash:
                 else:
                     fuente_df = fuente_counts.reset_index()
                     fuente_df.columns = ["fuente", "cantidad"]
-                    fuente_df["porcentaje"] = (fuente_df["cantidad"] / total_clientes * 100).round(1)
+                    fuente_df["porcentaje"] = (fuente_df["cantidad"] / len(df_tabs) * 100).round(1)
                     
                     col1, col2 = st.columns([1, 2])
                     
