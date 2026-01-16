@@ -5448,14 +5448,38 @@ with tab_dash:
         st.markdown(f"**Total Presupuesto General: ${total_presupuesto:,.2f}**")
         
         # Calcular total vendido solo para créditos con estatus DISPERSADO
-        df_dispersado = df_for_analysis[df_for_analysis['estatus'].str.upper() == 'DISPERSADO'].copy()
-        total_dispersado = 0
-        if not df_dispersado.empty and 'monto_final' in df_dispersado.columns:
-            try:
-                total_dispersado = pd.to_numeric(df_dispersado['monto_final'], errors='coerce').sum()
-            except Exception:
+        # Buscar la columna de estatus (puede ser 'estatus' o 'Estatus')
+        estatus_col = 'estatus' if 'estatus' in df_for_analysis.columns else ('Estatus' if 'Estatus' in df_for_analysis.columns else None)
+        
+        if estatus_col:
+            # Buscar la columna de monto final (puede ser 'monto_final' o 'Monto Final')
+            monto_col = 'monto_final' if 'monto_final' in df_for_analysis.columns else ('Monto Final' if 'Monto Final' in df_for_analysis.columns else None)
+            
+            if monto_col:
+                # Filtrar por DISPERSADO
+                df_dispersado = df_for_analysis[df_for_analysis[estatus_col].fillna("").str.upper() == 'DISPERSADO'].copy()
                 total_dispersado = 0
-        st.markdown(f"**Total Vendido (DISPERSADO): ${total_dispersado:,.2f}**")
+                if not df_dispersado.empty:
+                    try:
+                        # Limpiar montos usando la función helper
+                        import re
+                        def limpiar_monto_local(monto_str):
+                            if pd.isna(monto_str) or str(monto_str).strip() == "":
+                                return 0.0
+                            monto_clean = str(monto_str).strip()
+                            monto_clean = re.sub(r'[,$\s]', '', monto_clean)
+                            try:
+                                return float(monto_clean)
+                            except (ValueError, TypeError):
+                                return 0.0
+                        total_dispersado = df_dispersado[monto_col].apply(limpiar_monto_local).sum()
+                    except Exception:
+                        total_dispersado = 0
+                st.markdown(f"**Total Vendido (DISPERSADO): ${total_dispersado:,.2f}**")
+            else:
+                st.warning("No se encontró columna de monto final para calcular total DISPERSADO")
+        else:
+            st.warning("No se encontró columna de estatus para calcular total DISPERSADO")
 
         if not analisis_financiero['montos_por_estatus'].empty:
             # Filtrar solo estatus con monto final vendido > 0
