@@ -5446,6 +5446,16 @@ with tab_dash:
         # Mostrar la suma de 'Monto Solicitado' del DataFrame filtrado por producto y por rango de fechas seleccionado
         total_presupuesto = calcular_analisis_financiero(df_for_analysis)['total_propuesto']
         st.markdown(f"**Total Presupuesto General: ${total_presupuesto:,.2f}**")
+        
+        # Calcular total vendido solo para créditos con estatus DISPERSADO
+        df_dispersado = df_for_analysis[df_for_analysis['estatus'].str.upper() == 'DISPERSADO'].copy()
+        total_dispersado = 0
+        if not df_dispersado.empty and 'monto_final' in df_dispersado.columns:
+            try:
+                total_dispersado = pd.to_numeric(df_dispersado['monto_final'], errors='coerce').sum()
+            except Exception:
+                total_dispersado = 0
+        st.markdown(f"**Total Vendido (DISPERSADO): ${total_dispersado:,.2f}**")
 
         if not analisis_financiero['montos_por_estatus'].empty:
             # Filtrar solo estatus con monto final vendido > 0
