@@ -5452,8 +5452,12 @@ with tab_dash:
         estatus_col = 'estatus' if 'estatus' in df_for_analysis.columns else ('Estatus' if 'Estatus' in df_for_analysis.columns else None)
         
         if estatus_col:
-            # Buscar la columna de monto final (puede ser 'monto_final' o 'Monto Final')
-            monto_col = 'monto_final' if 'monto_final' in df_for_analysis.columns else ('Monto Final' if 'Monto Final' in df_for_analysis.columns else None)
+            # Buscar la columna de monto (puede ser 'monto_solicitado', 'Monto Solicitado', etc.)
+            monto_col = None
+            for col in df_for_analysis.columns:
+                if 'monto' in col.lower() and 'solicitado' in col.lower():
+                    monto_col = col
+                    break
             
             if monto_col:
                 # Filtrar por DISPERSADO
@@ -5477,7 +5481,7 @@ with tab_dash:
                         total_dispersado = 0
                 st.markdown(f"**Total Vendido (DISPERSADO): ${total_dispersado:,.2f}**")
             else:
-                st.warning("No se encontró columna de monto final para calcular total DISPERSADO")
+                st.warning("No se encontró columna de Monto Solicitado para calcular total DISPERSADO")
         else:
             st.warning("No se encontró columna de estatus para calcular total DISPERSADO")
 
