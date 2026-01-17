@@ -4681,6 +4681,38 @@ def can(action: str) -> bool:
     role = (u or {}).get("role", "member")
     return PERMISSIONS.get(role, {}).get(action, False)
 
+def filter_df_for_member(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Filtra un DataFrame por asesor asignado si el usuario es member.
+    Si el usuario no es member, devuelve el DataFrame sin cambios.
+    Si el usuario es member pero no tiene asesor asignado, muestra error y detiene la app.
+    
+    Args:
+        df: DataFrame de clientes a filtrar
+        
+    Returns:
+        DataFrame filtrado (solo para el asesor del member) o sin cambios (para admins)
+    """
+    cu = current_user() or {}
+    if cu.get("role") != "member":
+        return df
+
+    # Intentar obtener asesor desde sesión primero (lo nuevo)
+    assigned = (cu.get("asesor") or "").strip()
+    
+    # Fallback: si no está en sesión, intentar leerlo desde get_user
+    if not assigned:
+        udata = get_user(cu.get("user") or cu.get("email") or "")
+        assigned = (udata or {}).get("asesor", "").strip()
+
+    # Política fail-closed: si no hay asesor, detener la app
+    if not assigned:
+        st.error("Tu usuario no tiene asesor asignado. Contacta al administrador.")
+        st.stop()
+
+    # Filtrar por asesor (case-insensitive)
+    return df[df["asesor"].fillna("").str.strip().str.casefold() == assigned.casefold()].copy()
+
 # Migración inicial de usuarios locales a Google Sheets si procede
 def maybe_migrate_users_to_gsheet():
     """
@@ -4747,7 +4779,11 @@ if not current_user():
         u = get_user(luser)
         if u and _verify_pw(lpw, u.get("salt",""), u.get("hash","")):
             # establecer usuario y limpiar estado sensible
-            st.session_state["auth_user"] = {"user": u.get("user") or u.get("email"), "role": u["role"]}
+            st.session_state["auth_user"] = {
+                "user": (u.get("user") or u.get("email")),
+                "role": u["role"],
+                "asesor": (u.get("asesor") or "").strip()
+            }
             for _k in ("login_pw", "login_user"):
                 st.session_state.pop(_k, None)
             # quitar el formulario al instante; no forzar rerun inmediato (evita pantalla en blanco)
@@ -4985,16 +5021,8 @@ st.sidebar.caption("Filtros")
 
 # Cargar datos frescos para el sidebar
 df_cli = cargar_y_corregir_clientes()
-# Restricción por asesor asignado (miembro): limitar la vista a su asesor
-try:
-    cu = current_user() or {}
-    if cu.get("role") == "member":
-        udata = get_user(cu.get("user") or cu.get("email") or "")
-        assigned = (udata or {}).get("asesor", "").strip()
-        if assigned:
-            df_cli = df_cli[df_cli["asesor"].fillna("").str.strip().str.casefold() == assigned.casefold()].copy()
-except Exception:
-    pass
+# Aplicar filtro por asesor si el usuario es member (fail-closed)
+df_cli = filter_df_for_member(df_cli)
 
 # Opciones base
 SUC_LABEL_EMPTY = "(Sin sucursal)"
@@ -5312,16 +5340,8 @@ tab_dash, tab_cli, tab_prosp, tab_docs, tab_import, tab_hist = st.tabs(
 with tab_dash:
     # Cargar datos frescos para el dashboard
     df_cli = cargar_y_corregir_clientes()
-    # Restricción por asesor asignado (miembro): limitar la vista a su asesor
-    try:
-        cu = current_user() or {}
-        if cu.get("role") == "member":
-            udata = get_user(cu.get("user") or cu.get("email") or "")
-            assigned = (udata or {}).get("asesor", "").strip()
-            if assigned:
-                df_cli = df_cli[df_cli["asesor"].fillna("").str.strip().str.casefold() == assigned.casefold()].copy()
-    except Exception:
-        pass
+    # Aplicar filtro por asesor si el usuario es member (fail-closed)
+    df_cli = filter_df_for_member(df_cli)
     
     if df_cli.empty:
         st.info("Sin clientes aún.")
@@ -6653,16 +6673,23 @@ with tab_cli:
 with tab_prosp:
     st.subheader("🧲 Prospectos")
     df_prosp_view = cargar_prospectos()
-    # Restricción por asesor asignado (miembro): limitar prospectos al asesor asignado
-    try:
-        cu = current_user() or {}
-        if cu.get("role") == "member":
+    # Aplicar filtro por asesor si el usuario es member (fail-closed)
+    # Para prospectos, intentamos ambas columnas: "Asesor" y "asesor"
+    cu = current_user() or {}
+    if cu.get("role") == "member":
+        assigned = (cu.get("asesor") or "").strip()
+        if not assigned:
             udata = get_user(cu.get("user") or cu.get("email") or "")
             assigned = (udata or {}).get("asesor", "").strip()
-            if assigned and ("Asesor" in df_prosp_view.columns):
-                df_prosp_view = df_prosp_view[df_prosp_view["Asesor"].fillna("").str.strip().str.casefold() == assigned.casefold()].copy()
-    except Exception:
-        pass
+        if not assigned:
+            st.error("Tu usuario no tiene asesor asignado. Contacta al administrador.")
+            st.stop()
+        # Intentar filtrar por "Asesor" o "asesor" según lo que exista
+        if "Asesor" in df_prosp_view.columns:
+            df_prosp_view = df_prosp_view[df_prosp_view["Asesor"].fillna("").str.strip().str.casefold() == assigned.casefold()].copy()
+        elif "asesor" in df_prosp_view.columns:
+            df_prosp_view = df_prosp_view[df_prosp_view["asesor"].fillna("").str.strip().str.casefold() == assigned.casefold()].copy()
+    
     if df_prosp_view.empty:
         st.info("Sin prospectos en la hoja 'prospecto' aún.")
     else:
@@ -6861,16 +6888,9 @@ with tab_docs:
     st.subheader("📎 Documentos por cliente")
     # Cargar datos frescos para la pestaña de documentos
     df_cli = cargar_y_corregir_clientes()
-    # Restricción por asesor asignado (miembro)
-    try:
-        cu = current_user() or {}
-        if cu.get("role") == "member":
-            udata = get_user(cu.get("user") or cu.get("email") or "")
-            assigned = (udata or {}).get("asesor", "").strip()
-            if assigned:
-                df_cli = df_cli[df_cli["asesor"].fillna("").str.strip().str.casefold() == assigned.casefold()].copy()
-    except Exception:
-        pass
+    # Aplicar filtro por asesor si el usuario es member (fail-closed)
+    df_cli = filter_df_for_member(df_cli)
+    
     if df_cli.empty:
         st.info("No hay clientes aún.")
     else:
