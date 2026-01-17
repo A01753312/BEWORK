@@ -4505,7 +4505,7 @@ def cargar_usuarios_gsheet(force_reload: bool = False) -> dict:
             st.warning(f"⚠️ Usando caché de usuarios (API temporalmente no disponible)")
             return _USUARIOS_CACHE.copy()
         st.error(f"Error cargando usuarios desde Google Sheets: {e}")
-        return {"users": []}
+        return {"users": [], "_error": True}
 
 def guardar_usuarios_gsheet(users_data: dict):
     """
@@ -4527,11 +4527,7 @@ def guardar_usuarios_gsheet(users_data: dict):
         # Preparar datos para guardar
         users_list = users_data.get("users", [])
         if not users_list:
-            # Limpiar la hoja si no hay usuarios
-            try:
-                ws.clear()
-            except Exception:
-                pass
+            # NO limpiar la hoja automáticamente
             return
             
         # Crear DataFrame
@@ -4724,6 +4720,9 @@ def maybe_migrate_users_to_gsheet():
     try:
         # Verificar si ya hay usuarios en Google Sheets
         gsheet_data = cargar_usuarios_gsheet()
+        if gsheet_data.get("_error"):
+            # Sheets falló (quota/temporal), NO migrar
+            return
         if not gsheet_data.get("users"):
             # No hay usuarios en GS, intentar migrar desde local si hay credenciales
             if _gs_credentials() is None:
