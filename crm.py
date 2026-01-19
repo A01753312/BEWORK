@@ -4781,7 +4781,7 @@ if not current_user():
             st.session_state["auth_user"] = {
                 "user": (u.get("user") or u.get("email")),
                 "role": u["role"],
-                "asesor": (u.get("asesor") or "").strip()
+                "asesor": ("" if str(u.get("asesor", "")).lower() in ("nan", "none") else str(u.get("asesor", ""))).strip()
             }
             for _k in ("login_pw", "login_user"):
                 st.session_state.pop(_k, None)
